@@ -292,6 +292,60 @@ def set_model_setting(key: str, value: str) -> None:
     conn.commit()
 
 
+def get_watchlist() -> list[dict]:
+    rows = _conn().execute(
+        """SELECT w.theme_id, w.pinned_at, t.name,
+                  cv.composite_score, cv.source_diversity, cv.earliness, cv.breaching, cv.ts
+           FROM watchlist w
+           JOIN themes t ON t.theme_id = w.theme_id
+           LEFT JOIN (
+             SELECT theme_id, MAX(ts) as max_ts FROM composite_velocity GROUP BY theme_id
+           ) latest ON latest.theme_id = w.theme_id
+           LEFT JOIN composite_velocity cv ON cv.theme_id = w.theme_id AND cv.ts = latest.max_ts
+           ORDER BY w.pinned_at DESC"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def toggle_watchlist(theme_id: str) -> bool:
+    """Add if not present, remove if present. Returns True if now pinned."""
+    conn = _conn()
+    existing = conn.execute("SELECT 1 FROM watchlist WHERE theme_id=?", (theme_id,)).fetchone()
+    if existing:
+        conn.execute("DELETE FROM watchlist WHERE theme_id=?", (theme_id,))
+        conn.commit()
+        return False
+    else:
+        from datetime import datetime, timezone
+        conn.execute("INSERT INTO watchlist(theme_id, pinned_at) VALUES(?,?)",
+                     (theme_id, datetime.now(timezone.utc).isoformat()))
+        conn.commit()
+        return True
+
+
+def replace_india_crossmap(theme_id: str, nodes: list[dict]) -> None:
+    conn = _conn()
+    conn.execute("DELETE FROM india_crossmap WHERE theme_id=?", (theme_id,))
+    for n in nodes:
+        conn.execute(
+            """INSERT INTO india_crossmap
+               (theme_id,node_role,ticker,exchange,company_name,linkage_tightness,
+                justification,liquidity_flag,epistemic_tag)
+               VALUES(:theme_id,:node_role,:ticker,:exchange,:company_name,
+                      :linkage_tightness,:justification,:liquidity_flag,:epistemic_tag)""",
+            n,
+        )
+    conn.commit()
+
+
+def get_india_crossmap(theme_id: str) -> list[dict]:
+    rows = _conn().execute(
+        "SELECT * FROM india_crossmap WHERE theme_id=? ORDER BY id",
+        (theme_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def was_alerted_recently(theme_id: str, hours: int = 24) -> bool:
     from datetime import timedelta
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()

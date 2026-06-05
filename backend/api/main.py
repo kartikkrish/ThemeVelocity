@@ -15,6 +15,7 @@ from backend.api.schemas import (
     AlertItem,
     BeneficiaryNode,
     ConfidenceData,
+    IndiaCrossmapNode,
     IngestionStatus,
     ModelSettingsResponse,
     ModelSettingsUpdate,
@@ -24,6 +25,7 @@ from backend.api.schemas import (
     ThemeDetail,
     ThemeHeat,
     VelocityPoint,
+    WatchlistItem,
 )
 from backend.db import store
 from backend.engine.themes import tagger
@@ -194,6 +196,21 @@ def get_theme(theme_id: str):
         for n in vc_rows
     ]
 
+    india_rows = store.get_india_crossmap(t["theme_id"])
+    india_nodes = [
+        IndiaCrossmapNode(
+            node_role=n["node_role"],
+            company_name=n["company_name"],
+            ticker=n["ticker"] or "",
+            exchange=n["exchange"] or "",
+            linkage_tightness=n["linkage_tightness"],
+            justification=n["justification"] or "",
+            liquidity_flag=n["liquidity_flag"] or "ok",
+            epistemic_tag=n["epistemic_tag"] or "I",
+        )
+        for n in india_rows
+    ]
+
     return ThemeDetail(
         theme_id=t["theme_id"],
         name=t["name"],
@@ -208,6 +225,7 @@ def get_theme(theme_id: str):
         synthesis=synthesis_out,
         confidence=confidence_out,
         beneficiaries=beneficiaries,
+        india_crossmap=india_nodes,
     )
 
 
@@ -336,6 +354,57 @@ def test_model_connection(body: ModelSettingsUpdate):
     if result and result.get("ok"):
         return ModelTestResult(ok=True, message=f"Connected — {body.provider} responded.")
     return ModelTestResult(ok=False, message="Model responded but tool call was unexpected.")
+
+
+@app.get("/api/watchlist", response_model=list[WatchlistItem])
+def get_watchlist():
+    rows = store.get_watchlist()
+    result = []
+    for r in rows:
+        analysis = store.get_theme_analysis(r["theme_id"])
+        result.append(WatchlistItem(
+            theme_id=r["theme_id"],
+            name=r["name"] or "",
+            pinned_at=r["pinned_at"] or "",
+            composite_score=r["composite_score"] or 0.0,
+            source_diversity=r["source_diversity"] or 0,
+            earliness=r["earliness"] or 0.0,
+            breaching=bool(r["breaching"]),
+            ts=r["ts"] or "",
+            one_line_thesis=analysis["one_line_thesis"] if analysis else None,
+            maturity_stage=analysis["maturity_stage"] if analysis else None,
+        ))
+    return result
+
+
+@app.post("/api/watchlist/{theme_id}")
+def toggle_watchlist(theme_id: str):
+    pinned = store.toggle_watchlist(theme_id)
+    return {"theme_id": theme_id, "pinned": pinned}
+
+
+@app.post("/api/themes/{theme_id}/india")
+def trigger_india_crossmap(theme_id: str, background_tasks: BackgroundTasks):
+    def _run():
+        from backend.engine.india_crossmap import run_india_crossmap
+        run_india_crossmap(theme_id)
+    background_tasks.add_task(_run)
+    return {"status": "india crossmap triggered", "theme_id": theme_id}
+
+
+@app.get("/api/themes/{theme_id}/signal-timeline")
+def get_signal_timeline(theme_id: str):
+    """Per-source Z-score history for the validation instrument chart."""
+    from backend.engine.velocity import SOURCES
+    timeline = {}
+    for src in SOURCES:
+        snaps = store.get_velocity_history(theme_id, src, window_days=1, limit=90)
+        timeline[src] = [
+            {"ts": s["ts"], "zscore": s["zscore"], "cusum": s["cusum"],
+             "velocity": s["velocity"], "count": s["mention_count"]}
+            for s in snaps
+        ]
+    return timeline
 
 
 @app.post("/api/velocity/run")

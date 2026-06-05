@@ -68,6 +68,30 @@ class SynthesisData(BaseModel):
     noise_reason: str | None = None
 
 
+class WatchlistItem(BaseModel):
+    theme_id: str
+    name: str
+    pinned_at: str
+    composite_score: float = 0.0
+    source_diversity: int = 0
+    earliness: float = 0.0
+    breaching: bool = False
+    ts: str = ""
+    one_line_thesis: str | None = None
+    maturity_stage: str | None = None
+
+
+class IndiaCrossmapNode(BaseModel):
+    node_role: str
+    company_name: str
+    ticker: str
+    exchange: str
+    linkage_tightness: str
+    justification: str
+    liquidity_flag: str
+    epistemic_tag: str
+
+
 class ThemeDetail(BaseModel):
     theme_id: str
     name: str
@@ -83,6 +107,8 @@ class ThemeDetail(BaseModel):
     synthesis: SynthesisData | None = None
     confidence: ConfidenceData | None = None
     beneficiaries: list[BeneficiaryNode] = []
+    india_crossmap: list[IndiaCrossmapNode] = []
+    india_exposure_rating: str | None = None
 
 
 class AlertItem(BaseModel):

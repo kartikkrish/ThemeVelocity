@@ -104,6 +104,24 @@ CREATE TABLE IF NOT EXISTS model_settings (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS watchlist (
+  theme_id   TEXT PRIMARY KEY REFERENCES themes(theme_id),
+  pinned_at  TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS india_crossmap (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  theme_id          TEXT REFERENCES themes(theme_id),
+  node_role         TEXT,
+  ticker            TEXT,
+  exchange          TEXT,
+  company_name      TEXT,
+  linkage_tightness TEXT,
+  justification     TEXT,
+  liquidity_flag    TEXT,
+  epistemic_tag     TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_source_published ON events(source, published_at);
 CREATE INDEX IF NOT EXISTS idx_event_themes_theme ON event_themes(theme_id);
 CREATE INDEX IF NOT EXISTS idx_velocity_theme_ts ON velocity_snapshots(theme_id, ts);
