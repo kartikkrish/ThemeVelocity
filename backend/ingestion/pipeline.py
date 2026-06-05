@@ -9,6 +9,7 @@ from backend.engine.themes import tagger
 from backend.ingestion.edgar import EdgarFetcher
 from backend.ingestion.gdelt import GDELTFetcher
 from backend.ingestion.hn import HNFetcher
+from backend.ingestion.ticker_extractor import extract_tickers
 
 log = logging.getLogger(__name__)
 
@@ -39,10 +40,11 @@ def run_ingestion(since: datetime, sources: list[str] | None = None) -> dict[str
                 row = ev.to_db_row(fetched_at)
                 is_new = store.upsert_event(row)
                 if is_new:
-                    # Tag against theme lexicon
                     tags = tagger.tag(ev.raw_text)
                     for tag in tags:
                         store.insert_event_theme(ev.event_id, tag.theme_id, tag.confidence)
+                    for ticker, exchange in extract_tickers(ev.raw_text):
+                        store.insert_event_entity(ev.event_id, ticker, "TICKER", ticker, exchange)
                     new_count += 1
             totals[fetcher.source] = new_count
             log.info("ingestion %s: %d events fetched, %d new", fetcher.source, len(events), new_count)

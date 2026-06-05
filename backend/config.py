@@ -22,6 +22,14 @@ GDELT_POLL_SEC = int(os.getenv("TV_GDELT_POLL",  "900"))   # 15 min
 API_HOST = os.getenv("TV_API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("TV_API_PORT", "8765"))
 
-# Rolling windows (days)
+# Rolling windows (days) and their Z-score baselines
 WINDOWS = [1, 7, 30, 90]
-BASELINE_DAYS = 60   # Z-score baseline
+WINDOW_BASELINES: dict[int, int] = {1: 30, 7: 60, 30: 90}   # window → baseline days
+COMPOSITE_WINDOW = 1   # window used as primary composite signal
+
+# Alerts
+TELEGRAM_TOKEN   = os.getenv("TV_TELEGRAM_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TV_TELEGRAM_CHAT_ID", "")
+DASHBOARD_URL    = os.getenv("TV_DASHBOARD_URL", "http://localhost:3000")
+ALERT_COOLDOWN_HOURS = int(os.getenv("TV_ALERT_COOLDOWN_HOURS", "24"))
+ALERT_REFIRE_DELTA   = float(os.getenv("TV_ALERT_REFIRE_DELTA", "20"))  # score jump to re-alert

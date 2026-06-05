@@ -47,6 +47,15 @@ def upsert_event(row: dict) -> bool:
         raise
 
 
+def insert_event_entity(event_id: str, entity: str, entity_type: str, ticker: str | None, exchange: str | None) -> None:
+    conn = _conn()
+    conn.execute(
+        "INSERT OR IGNORE INTO event_entities(event_id,entity,entity_type,ticker,exchange) VALUES(?,?,?,?,?)",
+        (event_id, entity, entity_type, ticker, exchange),
+    )
+    conn.commit()
+
+
 def insert_event_theme(event_id: str, theme_id: str, confidence: float) -> None:
     conn = _conn()
     conn.execute(
@@ -186,6 +195,17 @@ def get_recent_alerts(limit: int = 50) -> list[dict]:
         "SELECT * FROM alerts ORDER BY fired_at DESC LIMIT ?", (limit,)
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_last_alert_score(theme_id: str) -> float | None:
+    row = _conn().execute(
+        "SELECT payload FROM alerts WHERE theme_id=? ORDER BY fired_at DESC LIMIT 1",
+        (theme_id,),
+    ).fetchone()
+    if not row or not row["payload"]:
+        return None
+    data = json.loads(row["payload"])
+    return data.get("composite_score")
 
 
 def was_alerted_recently(theme_id: str, hours: int = 24) -> bool:

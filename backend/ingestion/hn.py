@@ -9,8 +9,18 @@ import time
 from datetime import datetime, timezone
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from backend.ingestion.base import Fetcher, RawEvent
+
+
+def _session_with_retry() -> requests.Session:
+    s = requests.Session()
+    retry = Retry(total=4, backoff_factor=1.0, status_forcelist=[429, 500, 502, 503, 504])
+    s.mount("https://", HTTPAdapter(max_retries=retry))
+    s.mount("http://",  HTTPAdapter(max_retries=retry))
+    return s
 
 log = logging.getLogger(__name__)
 HN_SEARCH = "https://hn.algolia.com/api/v1/search_by_date"
@@ -21,7 +31,7 @@ class HNFetcher(Fetcher):
     source_weight = 0.7
 
     def __init__(self, query_terms: list[str] | None = None):
-        self._session = requests.Session()
+        self._session = _session_with_retry()
         self._query_terms = query_terms or []
 
     def fetch(self, since: datetime) -> list[RawEvent]:
