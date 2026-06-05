@@ -63,6 +63,38 @@ export interface BeneficiaryNode {
   epistemic_tag: string
 }
 
+export interface IndiaCrossmapNode {
+  node_role: string
+  company_name: string
+  ticker: string
+  exchange: string
+  linkage_tightness: string
+  justification: string
+  liquidity_flag: string
+  epistemic_tag: string
+}
+
+export interface WatchlistItem {
+  theme_id: string
+  name: string
+  pinned_at: string
+  composite_score: number
+  source_diversity: number
+  earliness: number
+  breaching: boolean
+  ts: string
+  one_line_thesis?: string | null
+  maturity_stage?: string | null
+}
+
+export interface SignalTimelinePoint {
+  ts: string
+  zscore: number
+  cusum: number
+  velocity: number
+  count: number
+}
+
 export interface ThemeDetail {
   theme_id: string
   name: string
@@ -78,6 +110,8 @@ export interface ThemeDetail {
   synthesis?: SynthesisData | null
   confidence?: ConfidenceData | null
   beneficiaries: BeneficiaryNode[]
+  india_crossmap: IndiaCrossmapNode[]
+  india_exposure_rating?: string | null
 }
 
 export interface AlertItem {
@@ -139,14 +173,18 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 }
 
 export const api = {
-  getHeat:           (limit = 20) => get<ThemeHeat[]>('/themes/heat', { limit }),
-  getTrending:       (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
-  getTheme:          (id: string) => get<ThemeDetail>(`/themes/${id}`),
-  getAlerts:         (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
-  analyzeTheme:      (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/analyze`),
-  triggerIngest:     () => post<{ status: string }>('/ingest/trigger'),
-  runVelocity:       () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
-  getModelSettings:  () => get<ModelSettings>('/settings/model'),
-  saveModelSettings: (body: ModelSettingsUpdate) => postJson<ModelSettings>('/settings/model', body),
-  testModelSettings: (body: ModelSettingsUpdate) => postJson<ModelTestResult>('/settings/model/test', body),
+  getHeat:             (limit = 20) => get<ThemeHeat[]>('/themes/heat', { limit }),
+  getTrending:         (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
+  getTheme:            (id: string) => get<ThemeDetail>(`/themes/${id}`),
+  getAlerts:           (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
+  analyzeTheme:        (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/analyze`),
+  triggerIngest:       () => post<{ status: string }>('/ingest/trigger'),
+  runVelocity:         () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
+  getModelSettings:    () => get<ModelSettings>('/settings/model'),
+  saveModelSettings:   (body: ModelSettingsUpdate) => postJson<ModelSettings>('/settings/model', body),
+  testModelSettings:   (body: ModelSettingsUpdate) => postJson<ModelTestResult>('/settings/model/test', body),
+  getWatchlist:        () => get<WatchlistItem[]>('/watchlist'),
+  toggleWatchlist:     (id: string) => post<{ theme_id: string; pinned: boolean }>(`/watchlist/${id}`),
+  triggerIndia:        (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/india`),
+  getSignalTimeline:   (id: string) => get<Record<string, SignalTimelinePoint[]>>(`/themes/${id}/signal-timeline`),
 }

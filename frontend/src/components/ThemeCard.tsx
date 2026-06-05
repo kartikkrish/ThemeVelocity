@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api/client'
 import type { ThemeHeat } from '../api/client'
 import { VelocitySparkline } from './VelocitySparkline'
@@ -38,10 +38,17 @@ function SourceDots({ count }: { count: number }) {
 
 export function ThemeCard({ theme, rank }: Props) {
   const nav = useNavigate()
+  const qc = useQueryClient()
   const { data: detail } = useQuery({
     queryKey: ['theme', theme.theme_id],
     queryFn: () => api.getTheme(theme.theme_id),
     staleTime: 120_000,
+  })
+  const wl = useQuery({ queryKey: ['watchlist'], queryFn: api.getWatchlist, staleTime: 30_000 })
+  const isPinned = wl.data?.some(w => w.theme_id === theme.theme_id) ?? false
+  const toggle = useMutation({
+    mutationFn: () => api.toggleWatchlist(theme.theme_id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['watchlist'] }),
   })
 
   const history = detail?.velocity_history ?? []
@@ -53,7 +60,7 @@ export function ThemeCard({ theme, rank }: Props) {
       className="card p-4 cursor-pointer hover:border-accent/30 transition-all duration-200 hover:bg-surface-hover animate-fade-up"
       style={{ animationDelay: `${rank * 60}ms`, animationFillMode: 'both' }}
     >
-      {/* Top row: rank + badges */}
+      {/* Top row: rank + badges + pin */}
       <div className="flex items-center justify-between gap-2 mb-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-[10px] text-muted font-tabular shrink-0">#{rank + 1}</span>
@@ -66,11 +73,24 @@ export function ThemeCard({ theme, rank }: Props) {
             )
           }
         </div>
-        {theme.catalyst_type && (
-          <span className="text-[10px] text-text-secondary shrink-0">
-            {CATALYST_SHORT[theme.catalyst_type] ?? theme.catalyst_type}
-          </span>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {theme.catalyst_type && (
+            <span className="text-[10px] text-text-secondary">
+              {CATALYST_SHORT[theme.catalyst_type] ?? theme.catalyst_type}
+            </span>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); toggle.mutate() }}
+            disabled={toggle.isPending}
+            title={isPinned ? 'Remove from watchlist' : 'Add to watchlist'}
+            className={`p-1 rounded transition-colors ${isPinned ? 'text-accent' : 'text-surface-border hover:text-muted'}`}
+          >
+            <svg className="w-3.5 h-3.5" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Theme name */}

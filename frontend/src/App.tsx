@@ -5,6 +5,7 @@ import { Dashboard } from './pages/Dashboard'
 import { ThemeDetail } from './pages/ThemeDetail'
 import { Alerts } from './pages/Alerts'
 import { Settings } from './pages/Settings'
+import { Watchlist } from './pages/Watchlist'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -57,7 +58,7 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/theme/:id" element={<ThemeDetail />} />
             <Route path="/alerts" element={<Alerts />} />
-            <Route path="/watchlist" element={<PlaceholderPage title="Watchlist" />} />
+            <Route path="/watchlist" element={<Watchlist />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<PlaceholderPage title="404" />} />
           </Routes>

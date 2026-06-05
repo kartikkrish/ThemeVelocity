@@ -11,6 +11,8 @@ import { MaturityBadge } from '../components/MaturityBadge'
 import { SignalMeter } from '../components/SignalMeter'
 import { ConfidenceBreakdown } from '../components/ConfidenceBreakdown'
 import { WhosBenefiting } from '../components/WhosBenefiting'
+import { IndiaCrossmap } from '../components/IndiaCrossmap'
+import { SignalTimeline } from '../components/SignalTimeline'
 
 const CHART_COLORS = { line: '#00e5a0', grid: '#21262d', axis: '#8b949e' }
 
@@ -37,10 +39,41 @@ function AnalystRow({ label, value }: { label: string; value: string | number })
   )
 }
 
+function PinButton({ themeId, name }: { themeId: string; name: string }) {
+  const qc = useQueryClient()
+  const wl = useQuery({ queryKey: ['watchlist'], queryFn: api.getWatchlist, staleTime: 30_000 })
+  const isPinned = wl.data?.some(w => w.theme_id === themeId) ?? false
+
+  const toggle = useMutation({
+    mutationFn: () => api.toggleWatchlist(themeId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['watchlist'] }),
+  })
+
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); toggle.mutate() }}
+      disabled={toggle.isPending}
+      title={isPinned ? 'Remove from watchlist' : 'Add to watchlist'}
+      className={`flex items-center gap-1.5 text-[11px] px-3 py-1 rounded-full border transition-colors disabled:opacity-50
+        ${isPinned
+          ? 'bg-accent/10 text-accent border-accent/20 hover:bg-red-400/10 hover:text-red-400 hover:border-red-400/20'
+          : 'bg-surface-raised text-muted border-surface-border hover:bg-accent/10 hover:text-accent hover:border-accent/20'
+        }`}
+    >
+      <svg className="w-3 h-3" fill={isPinned ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+          d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+      </svg>
+      {isPinned ? 'Watching' : 'Watch'}
+    </button>
+  )
+}
+
 export function ThemeDetail() {
   const { id } = useParams<{ id: string }>()
   const qc = useQueryClient()
   const [analystOpen, setAnalystOpen] = useState(false)
+  const [signalOpen, setSignalOpen] = useState(false)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['theme', id],
@@ -52,6 +85,11 @@ export function ThemeDetail() {
   const analyze = useMutation({
     mutationFn: () => api.analyzeTheme(id!),
     onSuccess: () => setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 4000),
+  })
+
+  const india = useMutation({
+    mutationFn: () => api.triggerIndia(id!),
+    onSuccess: () => setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 5000),
   })
 
   if (isLoading) {
@@ -94,15 +132,18 @@ export function ThemeDetail() {
 
         {/* ── Hero ── */}
         <div className="card p-5">
-          <div className="flex flex-wrap items-center gap-2 mb-3">
-            {synthesis?.maturity_stage
-              ? <MaturityBadge stage={synthesis.maturity_stage} showSub />
-              : data.breaching && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 font-medium animate-pulse-accent">
-                  New signal
-                </span>
-              )
-            }
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              {synthesis?.maturity_stage
+                ? <MaturityBadge stage={synthesis.maturity_stage} showSub />
+                : data.breaching && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 font-medium animate-pulse-accent">
+                    New signal
+                  </span>
+                )
+              }
+            </div>
+            <PinButton themeId={data.theme_id} name={data.name} />
           </div>
 
           <h1 className="text-xl font-semibold text-text-primary mb-2">{data.name}</h1>
@@ -166,6 +207,16 @@ export function ThemeDetail() {
           <WhosBenefiting nodes={data.beneficiaries} />
         </div>
 
+        {/* ── India cross-map ── */}
+        <div className="card p-5">
+          <IndiaCrossmap
+            nodes={data.india_crossmap ?? []}
+            exposureRating={data.india_exposure_rating}
+            onTrigger={() => india.mutate()}
+            isPending={india.isPending}
+          />
+        </div>
+
         {/* ── Momentum chart ── */}
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
@@ -193,6 +244,27 @@ export function ThemeDetail() {
                   dot={false} activeDot={{ r: 4, fill: CHART_COLORS.line, stroke: '#0d1117', strokeWidth: 2 }} />
               </LineChart>
             </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* ── Per-source signal timeline (collapsible) ── */}
+        <div className="card overflow-hidden">
+          <button
+            onClick={() => setSignalOpen(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-3 text-xs text-muted hover:text-text-secondary transition-colors"
+          >
+            <span className="font-medium">Per-source signal timeline</span>
+            <svg className={`w-4 h-4 transition-transform ${signalOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+          {signalOpen && (
+            <div className="px-5 pb-5 border-t border-surface-border pt-4">
+              <p className="text-[10px] text-muted mb-4">
+                Z-score per source over time. Z ≥ 2.0 (dashed line) indicates a structural break in mention rate.
+              </p>
+              <SignalTimeline themeId={data.theme_id} />
+            </div>
           )}
         </div>
 
