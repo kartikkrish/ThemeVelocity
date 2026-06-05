@@ -6,6 +6,7 @@ Returns article counts and timeline data for theme terms.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from datetime import datetime, timezone
@@ -62,8 +63,11 @@ class GDELTFetcher(Fetcher):
                 pub = datetime.strptime(seendate, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
+            # Derive event_id from URL alone — stable across re-polls of the same article
+            event_id = hashlib.sha1(f"gdelt|{url}".encode()).hexdigest()[:20]
             results.append(
                 RawEvent(
+                    event_id=event_id,
                     source=self.source,
                     source_weight=self.source_weight,
                     published_at=pub,

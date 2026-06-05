@@ -32,23 +32,28 @@ log = logging.getLogger(__name__)
 _last_ingestion: dict[str, datetime] = {}
 
 
-def _ingestion_job():
-    src_windows = {
-        "edgar": timedelta(seconds=config.EDGAR_POLL_SEC),
-        "hn": timedelta(seconds=config.HN_POLL_SEC),
-        "gdelt": timedelta(seconds=config.GDELT_POLL_SEC),
-    }
+def _edgar_job():
+    now = datetime.now(timezone.utc)
+    since = _last_ingestion.get("edgar", now - timedelta(days=7))
+    log.info("edgar ingestion since=%s", since.isoformat())
+    counts = run_ingestion(since=since, sources=["edgar"])
+    _last_ingestion["edgar"] = now
+    run_velocity_cycle()
+    log.info("edgar ingestion complete: %s", counts)
+
+
+def _hn_gdelt_job():
     now = datetime.now(timezone.utc)
     since = min(
         _last_ingestion.get(src, now - timedelta(days=7))
-        for src in ["edgar", "hn", "gdelt"]
+        for src in ["hn", "gdelt"]
     )
-    log.info("scheduled ingestion since=%s", since.isoformat())
-    counts = run_ingestion(since=since)
-    for src in src_windows:
+    log.info("hn/gdelt ingestion since=%s", since.isoformat())
+    counts = run_ingestion(since=since, sources=["hn", "gdelt"])
+    for src in ["hn", "gdelt"]:
         _last_ingestion[src] = now
     run_velocity_cycle()
-    log.info("scheduled ingestion complete: %s", counts)
+    log.info("hn/gdelt ingestion complete: %s", counts)
 
 
 @asynccontextmanager
@@ -56,7 +61,8 @@ async def lifespan(app: FastAPI):
     store.init_db()
     tagger.load()
     scheduler = BackgroundScheduler(timezone="UTC")
-    scheduler.add_job(_ingestion_job, "interval", seconds=config.HN_POLL_SEC, id="ingest")
+    scheduler.add_job(_edgar_job, "interval", seconds=config.EDGAR_POLL_SEC, id="ingest_edgar")
+    scheduler.add_job(_hn_gdelt_job, "interval", seconds=config.HN_POLL_SEC, id="ingest_hn_gdelt")
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)

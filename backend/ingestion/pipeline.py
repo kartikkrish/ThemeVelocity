@@ -23,11 +23,12 @@ def _build_fetchers(query_terms: list[str]) -> list:
     ]
 
 
-def run_ingestion(since: datetime) -> dict[str, int]:
-    """Fetch from all sources since `since`, tag, persist. Returns counts."""
+def run_ingestion(since: datetime, sources: list[str] | None = None) -> dict[str, int]:
+    """Fetch from sources since `since`, tag, persist. sources=None runs all. Returns counts."""
     fetched_at = datetime.now(timezone.utc)
     query_terms = tagger.top_query_terms(n=15)
-    fetchers = _build_fetchers(query_terms)
+    all_fetchers = _build_fetchers(query_terms)
+    fetchers = [f for f in all_fetchers if sources is None or f.source in sources]
 
     totals: dict[str, int] = {}
     for fetcher in fetchers:
