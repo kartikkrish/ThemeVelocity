@@ -144,17 +144,44 @@ class OpenAICompatProvider(IModelProvider):
 # Factory
 # ---------------------------------------------------------------------------
 
-def get_provider(model: str) -> IModelProvider | None:
+def _effective_settings() -> dict:
+    """
+    Merge DB settings (higher priority) over env-var config (lower priority).
+    Returns a flat dict with keys: provider, api_key, base_url,
+    synthesis_model, value_chain_model.
+    """
+    from backend import config
+    from backend.db import store
+
+    db = store.get_model_settings()
+    return {
+        "provider":         db.get("provider")         or config.MODEL_PROVIDER,
+        "api_key":          db.get("api_key")          or config.MODEL_API_KEY,
+        "base_url":         db.get("base_url")         or config.MODEL_BASE_URL,
+        "synthesis_model":  db.get("synthesis_model")  or config.SYNTHESIS_MODEL,
+        "value_chain_model": db.get("value_chain_model") or config.VALUE_CHAIN_MODEL,
+    }
+
+
+def get_synthesis_model() -> str:
+    return _effective_settings()["synthesis_model"]
+
+
+def get_value_chain_model() -> str:
+    return _effective_settings()["value_chain_model"]
+
+
+def get_provider(model: str, *, _settings: dict | None = None) -> IModelProvider | None:
     """
     Return the configured provider for *model*, or None if not available.
 
-    Provider selection order:
-      1. TV_MODEL_PROVIDER env var
-      2. Auto-detect from model name (claude→anthropic, gemini→gemini, else→ollama)
-    """
-    from backend import config
+    Reads live settings from DB (overrides env vars) so provider switches
+    take effect immediately without restart.
 
-    ptype = config.MODEL_PROVIDER.lower()
+    _settings: pre-fetched settings dict (used internally to avoid double DB read).
+    """
+    cfg = _settings or _effective_settings()
+    ptype = cfg["provider"].lower()
 
     if ptype == "auto":
         m = model.lower()
@@ -166,27 +193,27 @@ def get_provider(model: str) -> IModelProvider | None:
             ptype = "ollama"
 
     if ptype == "anthropic":
-        if not config.MODEL_API_KEY:
+        if not cfg["api_key"]:
             log.debug("anthropic provider disabled — set MODEL_API_KEY or ANTHROPIC_API_KEY")
             return None
-        return AnthropicProvider(api_key=config.MODEL_API_KEY, model=model)
+        return AnthropicProvider(api_key=cfg["api_key"], model=model)
 
     if ptype == "gemini":
-        if not config.MODEL_API_KEY:
+        if not cfg["api_key"]:
             log.debug("gemini provider disabled — set MODEL_API_KEY")
             return None
         return OpenAICompatProvider(
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            api_key=config.MODEL_API_KEY,
+            api_key=cfg["api_key"],
             model=model,
         )
 
     if ptype == "ollama":
         return OpenAICompatProvider(
-            base_url=config.MODEL_BASE_URL or "http://localhost:11434/v1",
+            base_url=cfg["base_url"] or "http://localhost:11434/v1",
             api_key="ollama",
             model=model,
         )
 
-    log.warning("Unknown TV_MODEL_PROVIDER=%r — model layer disabled", config.MODEL_PROVIDER)
+    log.warning("Unknown provider=%r — model layer disabled", cfg["provider"])
     return None

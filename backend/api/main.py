@@ -16,6 +16,9 @@ from backend.api.schemas import (
     BeneficiaryNode,
     ConfidenceData,
     IngestionStatus,
+    ModelSettingsResponse,
+    ModelSettingsUpdate,
+    ModelTestResult,
     SourceSnapshot,
     SynthesisData,
     ThemeDetail,
@@ -263,6 +266,76 @@ def trigger_ingestion(background_tasks: BackgroundTasks):
 
     background_tasks.add_task(_run)
     return IngestionStatus(status="triggered", counts={})
+
+
+@app.get("/api/settings/model", response_model=ModelSettingsResponse)
+def get_model_settings():
+    from backend.engine.model_provider import _effective_settings
+    cfg = _effective_settings()
+    raw_key = cfg["api_key"]
+    masked = None
+    if raw_key:
+        visible = min(4, len(raw_key))
+        masked = raw_key[:visible] + "…" + raw_key[-4:] if len(raw_key) > 8 else "****"
+    return ModelSettingsResponse(
+        provider=cfg["provider"],
+        api_key_set=bool(raw_key),
+        api_key_masked=masked,
+        base_url=cfg["base_url"],
+        synthesis_model=cfg["synthesis_model"],
+        value_chain_model=cfg["value_chain_model"],
+    )
+
+
+@app.post("/api/settings/model", response_model=ModelSettingsResponse)
+def save_model_settings(body: ModelSettingsUpdate):
+    store.set_model_setting("provider", body.provider)
+    store.set_model_setting("base_url", body.base_url)
+    store.set_model_setting("synthesis_model", body.synthesis_model)
+    store.set_model_setting("value_chain_model", body.value_chain_model)
+    if body.api_key is not None:  # None = keep existing; "" = clear
+        store.set_model_setting("api_key", body.api_key)
+    return get_model_settings()
+
+
+@app.post("/api/settings/model/test", response_model=ModelTestResult)
+def test_model_connection(body: ModelSettingsUpdate):
+    """Test the supplied settings without persisting them."""
+    from backend.engine.model_provider import get_provider
+    api_key = body.api_key
+    if api_key is None:
+        # Use whatever is currently persisted
+        from backend.engine.model_provider import _effective_settings
+        api_key = _effective_settings()["api_key"]
+
+    test_cfg = {
+        "provider": body.provider,
+        "api_key": api_key or "",
+        "base_url": body.base_url or "http://localhost:11434/v1",
+        "synthesis_model": body.synthesis_model,
+        "value_chain_model": body.value_chain_model,
+    }
+
+    _PING_SCHEMA = {
+        "type": "object",
+        "properties": {"ok": {"type": "boolean"}},
+        "required": ["ok"],
+    }
+    provider = get_provider(body.synthesis_model, _settings=test_cfg)
+    if not provider:
+        return ModelTestResult(ok=False, message="Provider not configured — check API key.")
+
+    result = provider.structured_completion(
+        system="You are a helpful assistant.",
+        user="Reply by calling the tool with ok=true.",
+        tool_name="ping",
+        tool_description="Ping test",
+        tool_schema=_PING_SCHEMA,
+        max_tokens=64,
+    )
+    if result and result.get("ok"):
+        return ModelTestResult(ok=True, message=f"Connected — {body.provider} responded.")
+    return ModelTestResult(ok=False, message="Model responded but tool call was unexpected.")
 
 
 @app.post("/api/velocity/run")

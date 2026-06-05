@@ -275,6 +275,23 @@ def get_last_alert_score(theme_id: str) -> float | None:
     return data.get("composite_score")
 
 
+def get_model_settings() -> dict:
+    """Return persisted model settings as a flat dict. Missing keys return empty string."""
+    rows = _conn().execute("SELECT key, value FROM model_settings").fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+def set_model_setting(key: str, value: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _conn()
+    conn.execute(
+        "INSERT INTO model_settings(key,value,updated_at) VALUES(?,?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+        (key, value, now),
+    )
+    conn.commit()
+
+
 def was_alerted_recently(theme_id: str, hours: int = 24) -> bool:
     from datetime import timedelta
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()

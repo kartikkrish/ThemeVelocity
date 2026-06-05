@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 from backend import config
 from backend.db import store
-from backend.engine.model_provider import get_provider
+from backend.engine.model_provider import get_provider, get_synthesis_model
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def _build_prompt(theme_name: str, primitive: str, events: list[str]) -> str:
 
 def run_synthesis(theme_id: str) -> dict | None:
     """Run LLM synthesis for a theme. Returns the result dict or None if unavailable."""
-    provider = get_provider(config.SYNTHESIS_MODEL)
+    provider = get_provider(get_synthesis_model())
     if not provider:
         log.debug("synthesis skipped — no model provider configured")
         return None

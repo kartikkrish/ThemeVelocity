@@ -4,6 +4,7 @@ import { Nav } from './components/Nav'
 import { Dashboard } from './pages/Dashboard'
 import { ThemeDetail } from './pages/ThemeDetail'
 import { Alerts } from './pages/Alerts'
+import { Settings } from './pages/Settings'
 
 class ErrorBoundary extends Component<
   { children: ReactNode },
@@ -57,7 +58,7 @@ export default function App() {
             <Route path="/theme/:id" element={<ThemeDetail />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/watchlist" element={<PlaceholderPage title="Watchlist" />} />
-            <Route path="/settings" element={<PlaceholderPage title="Settings" />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<PlaceholderPage title="404" />} />
           </Routes>
         </ErrorBoundary>

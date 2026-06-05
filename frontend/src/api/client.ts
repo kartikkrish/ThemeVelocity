@@ -106,12 +106,47 @@ async function post<T>(path: string): Promise<T> {
   return res.json()
 }
 
+export interface ModelSettings {
+  provider: 'anthropic' | 'gemini' | 'ollama'
+  api_key_set: boolean
+  api_key_masked: string | null
+  base_url: string
+  synthesis_model: string
+  value_chain_model: string
+}
+
+export interface ModelSettingsUpdate {
+  provider: string
+  api_key?: string
+  base_url?: string
+  synthesis_model: string
+  value_chain_model: string
+}
+
+export interface ModelTestResult {
+  ok: boolean
+  message: string
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(BASE + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.json()
+}
+
 export const api = {
-  getHeat:       (limit = 20) => get<ThemeHeat[]>('/themes/heat', { limit }),
-  getTrending:   (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
-  getTheme:      (id: string) => get<ThemeDetail>(`/themes/${id}`),
-  getAlerts:     (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
-  analyzeTheme:  (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/analyze`),
-  triggerIngest: () => post<{ status: string }>('/ingest/trigger'),
-  runVelocity:   () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
+  getHeat:           (limit = 20) => get<ThemeHeat[]>('/themes/heat', { limit }),
+  getTrending:       (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
+  getTheme:          (id: string) => get<ThemeDetail>(`/themes/${id}`),
+  getAlerts:         (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
+  analyzeTheme:      (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/analyze`),
+  triggerIngest:     () => post<{ status: string }>('/ingest/trigger'),
+  runVelocity:       () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
+  getModelSettings:  () => get<ModelSettings>('/settings/model'),
+  saveModelSettings: (body: ModelSettingsUpdate) => postJson<ModelSettings>('/settings/model', body),
+  testModelSettings: (body: ModelSettingsUpdate) => postJson<ModelTestResult>('/settings/model/test', body),
 }

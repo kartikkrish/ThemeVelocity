@@ -98,3 +98,25 @@ class AlertItem(BaseModel):
 class IngestionStatus(BaseModel):
     status: str
     counts: dict[str, int]
+
+
+class ModelSettingsResponse(BaseModel):
+    provider: str
+    api_key_set: bool
+    api_key_masked: str | None  # e.g. "sk-ant-...a1b2"
+    base_url: str
+    synthesis_model: str
+    value_chain_model: str
+
+
+class ModelSettingsUpdate(BaseModel):
+    provider: str
+    api_key: str | None = None   # None = keep existing; "" = clear
+    base_url: str = ""
+    synthesis_model: str
+    value_chain_model: str
+
+
+class ModelTestResult(BaseModel):
+    ok: bool
+    message: str

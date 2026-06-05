@@ -98,6 +98,12 @@ CREATE TABLE IF NOT EXISTS alerts (
   acknowledged INTEGER DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS model_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT NOT NULL,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_source_published ON events(source, published_at);
 CREATE INDEX IF NOT EXISTS idx_event_themes_theme ON event_themes(theme_id);
 CREATE INDEX IF NOT EXISTS idx_velocity_theme_ts ON velocity_snapshots(theme_id, ts);

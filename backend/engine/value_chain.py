@@ -12,7 +12,7 @@ import logging
 
 from backend import config
 from backend.db import store
-from backend.engine.model_provider import get_provider
+from backend.engine.model_provider import get_provider, get_value_chain_model
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +90,7 @@ def _build_prompt(theme_name: str, primitive: str, thesis: str) -> str:
 
 def run_value_chain(theme_id: str) -> list[dict] | None:
     """Run LLM value-chain decomposition. Returns list of node dicts or None."""
-    provider = get_provider(config.VALUE_CHAIN_MODEL)
+    provider = get_provider(get_value_chain_model())
     if not provider:
         log.debug("value_chain skipped — no model provider configured")
         return None
