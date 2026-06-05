@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "themevelocity"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.29",
+    "apscheduler>=3.10",
+    "requests>=2.31",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scipy>=1.13",
+    "pydantic>=2.7",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest", "httpx"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*"]
+
+[tool.ruff]
+line-length = 100

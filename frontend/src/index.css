@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #0d1117;
+    color: #e6edf3;
+    font-family: 'DM Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Tabular figures for any number-heavy content */
+  .tabular {
+    font-family: 'IBM Plex Mono', monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0d1117;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #21262d;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #30363d;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-raised border border-surface-border rounded-lg;
+  }
+
+  .badge-tight {
+    @apply text-xs px-1.5 py-0.5 rounded font-medium;
+    background: rgba(0, 229, 160, 0.15);
+    color: #00e5a0;
+  }
+
+  .badge-moderate {
+    @apply text-xs px-1.5 py-0.5 rounded font-medium;
+    background: rgba(240, 165, 0, 0.15);
+    color: #f0a500;
+  }
+
+  .badge-loose {
+    @apply text-xs px-1.5 py-0.5 rounded font-medium;
+    background: rgba(139, 148, 158, 0.15);
+    color: #8b949e;
+  }
+
+  .tag-V { @apply text-xs px-1.5 py-0.5 rounded font-mono bg-blue-900/30 text-blue-400; }
+  .tag-E { @apply text-xs px-1.5 py-0.5 rounded font-mono bg-yellow-900/30 text-yellow-400; }
+  .tag-I { @apply text-xs px-1.5 py-0.5 rounded font-mono bg-purple-900/30 text-purple-400; }
+
+  .velocity-bar {
+    @apply h-1 rounded-full bg-surface-border overflow-hidden;
+  }
+  .velocity-bar-fill {
+    @apply h-full rounded-full transition-all duration-500;
+    background: linear-gradient(90deg, #00b37a, #00e5a0);
+  }
+}
