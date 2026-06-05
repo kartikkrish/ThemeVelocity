@@ -228,6 +228,15 @@ def run_velocity_cycle(theme_ids: list[str] | None = None) -> list[VelocityResul
             log.debug("velocity %s: score=%.1f breach=%s", t["theme_id"], r.composite_score, r.breaching)
             if r.breaching:
                 maybe_fire(theme_names.get(t["theme_id"], t["theme_id"]), r)
+                # Trigger synthesis if not recently analyzed (import here to avoid circular)
+                if not store.get_theme_analysis(t["theme_id"]):
+                    try:
+                        from backend.engine.synthesis import synthesize_and_store
+                        synthesize_and_store(t["theme_id"], r)
+                        from backend.engine.value_chain import run_value_chain
+                        run_value_chain(t["theme_id"])
+                    except Exception as exc:
+                        log.warning("synthesis/value_chain failed for %s: %s", t["theme_id"], exc)
         except Exception as exc:
             log.error("velocity error for %s: %s", t["theme_id"], exc)
     return results

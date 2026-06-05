@@ -27,6 +27,11 @@ WINDOWS = [1, 7, 30, 90]
 WINDOW_BASELINES: dict[int, int] = {1: 30, 7: 60, 30: 90}   # window → baseline days
 COMPOSITE_WINDOW = 1   # window used as primary composite signal
 
+# Agentic layer
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+SYNTHESIS_MODEL   = os.getenv("TV_SYNTHESIS_MODEL",   "claude-haiku-4-5-20251001")
+VALUE_CHAIN_MODEL = os.getenv("TV_VALUE_CHAIN_MODEL",  "claude-sonnet-4-6")
+
 # Alerts
 TELEGRAM_TOKEN   = os.getenv("TV_TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TV_TELEGRAM_CHAT_ID", "")

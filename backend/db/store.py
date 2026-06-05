@@ -180,6 +180,73 @@ def get_trending_themes(limit: int = 20) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_recent_theme_events(theme_id: str, since: datetime, limit: int = 30) -> list[dict]:
+    rows = _conn().execute(
+        """SELECT e.raw_text, e.source, e.published_at FROM event_themes et
+           JOIN events e ON et.event_id = e.event_id
+           WHERE et.theme_id=? AND e.published_at>=?
+           ORDER BY e.published_at DESC LIMIT ?""",
+        (theme_id, since.isoformat(), limit),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def upsert_theme_analysis(row: dict) -> None:
+    conn = _conn()
+    conn.execute(
+        """INSERT INTO theme_analysis
+           (theme_id,analyzed_at,one_line_thesis,is_real_theme,catalyst_type,catalyst_detail,
+            maturity_stage,earliness,c_velocity,c_source,c_catalyst,c_earliness,
+            c_linkage,c_liquidity,c_total,dominant_tag)
+           VALUES(:theme_id,:analyzed_at,:one_line_thesis,:is_real_theme,:catalyst_type,
+                  :catalyst_detail,:maturity_stage,:earliness,:c_velocity,:c_source,
+                  :c_catalyst,:c_earliness,:c_linkage,:c_liquidity,:c_total,:dominant_tag)
+           ON CONFLICT(theme_id,analyzed_at) DO UPDATE SET
+             one_line_thesis=excluded.one_line_thesis,
+             is_real_theme=excluded.is_real_theme,
+             catalyst_type=excluded.catalyst_type,
+             catalyst_detail=excluded.catalyst_detail,
+             maturity_stage=excluded.maturity_stage,
+             c_velocity=excluded.c_velocity, c_source=excluded.c_source,
+             c_catalyst=excluded.c_catalyst, c_earliness=excluded.c_earliness,
+             c_linkage=excluded.c_linkage, c_liquidity=excluded.c_liquidity,
+             c_total=excluded.c_total, dominant_tag=excluded.dominant_tag""",
+        row,
+    )
+    conn.commit()
+
+
+def get_theme_analysis(theme_id: str) -> dict | None:
+    row = _conn().execute(
+        "SELECT * FROM theme_analysis WHERE theme_id=? ORDER BY analyzed_at DESC LIMIT 1",
+        (theme_id,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def replace_value_chain(theme_id: str, nodes: list[dict]) -> None:
+    conn = _conn()
+    conn.execute("DELETE FROM value_chain_nodes WHERE theme_id=?", (theme_id,))
+    for n in nodes:
+        conn.execute(
+            """INSERT INTO value_chain_nodes
+               (theme_id,node_role,ticker,exchange,company_name,linkage_tightness,
+                justification,liquidity_flag,epistemic_tag)
+               VALUES(:theme_id,:node_role,:ticker,:exchange,:company_name,
+                      :linkage_tightness,:justification,:liquidity_flag,:epistemic_tag)""",
+            n,
+        )
+    conn.commit()
+
+
+def get_value_chain(theme_id: str) -> list[dict]:
+    rows = _conn().execute(
+        "SELECT * FROM value_chain_nodes WHERE theme_id=? ORDER BY id",
+        (theme_id,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def insert_alert(row: dict) -> None:
     conn = _conn()
     conn.execute(

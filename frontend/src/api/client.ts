@@ -8,6 +8,10 @@ export interface ThemeHeat {
   earliness: number
   breaching: boolean
   ts: string
+  // Phase 2 — nullable until synthesis runs
+  one_line_thesis?: string | null
+  catalyst_type?: string | null
+  maturity_stage?: string | null
 }
 
 export interface SourceSnapshot {
@@ -27,6 +31,38 @@ export interface VelocityPoint {
   breaching: boolean
 }
 
+export interface SynthesisData {
+  one_line_thesis: string
+  catalyst_type: string
+  catalyst_detail: string
+  maturity_stage: string
+  is_real_theme: boolean
+  key_entities: string[]
+  epistemic_tag: string
+  noise_reason?: string | null
+}
+
+export interface ConfidenceData {
+  c_velocity: number
+  c_source: number
+  c_catalyst: number
+  c_earliness: number
+  c_linkage: number
+  c_liquidity: number
+  c_total: number
+  epistemic_tag: string
+}
+
+export interface BeneficiaryNode {
+  node_role: string
+  company_name: string
+  ticker: string
+  exchange: string
+  linkage_tightness: string
+  justification: string
+  epistemic_tag: string
+}
+
 export interface ThemeDetail {
   theme_id: string
   name: string
@@ -38,13 +74,19 @@ export interface ThemeDetail {
   breaching: boolean
   per_source: SourceSnapshot[]
   velocity_history: VelocityPoint[]
+  // Phase 2+
+  synthesis?: SynthesisData | null
+  confidence?: ConfidenceData | null
+  beneficiaries: BeneficiaryNode[]
 }
 
 export interface AlertItem {
   alert_id: string
   theme_id: string
+  theme_name: string
   fired_at: string
   composite_score: number
+  one_line_thesis?: string | null
   acknowledged: boolean
 }
 
@@ -65,10 +107,11 @@ async function post<T>(path: string): Promise<T> {
 }
 
 export const api = {
-  getHeat: (limit = 20) => get<ThemeHeat[]>('/themes/heat', { limit }),
-  getTrending: (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
-  getTheme: (id: string) => get<ThemeDetail>(`/themes/${id}`),
-  getAlerts: (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
+  getHeat:       (limit = 20) => get<ThemeHeat[]>('/themes/heat', { limit }),
+  getTrending:   (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
+  getTheme:      (id: string) => get<ThemeDetail>(`/themes/${id}`),
+  getAlerts:     (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
+  analyzeTheme:  (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/analyze`),
   triggerIngest: () => post<{ status: string }>('/ingest/trigger'),
-  runVelocity: () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
+  runVelocity:   () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
 }

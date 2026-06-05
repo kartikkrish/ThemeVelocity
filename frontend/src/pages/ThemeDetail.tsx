@@ -1,71 +1,47 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, ReferenceLine,
 } from 'recharts'
 import { api } from '../api/client'
 import type { VelocityPoint } from '../api/client'
+import { MaturityBadge } from '../components/MaturityBadge'
+import { SignalMeter } from '../components/SignalMeter'
+import { ConfidenceBreakdown } from '../components/ConfidenceBreakdown'
+import { WhosBenefiting } from '../components/WhosBenefiting'
 
-function StatCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="card p-3">
-      <p className="text-[10px] text-muted uppercase tracking-widest mb-1">{label}</p>
-      <p className="font-tabular text-xl font-medium text-text-primary">{value}</p>
-      {sub && <p className="text-[10px] text-muted mt-0.5">{sub}</p>}
-    </div>
-  )
+const CHART_COLORS = { line: '#00e5a0', grid: '#21262d', axis: '#8b949e' }
+
+const CATALYST_LABELS: Record<string, { label: string; description: string }> = {
+  earnings_guidance:  { label: 'Earnings Guidance',   description: 'Companies are raising guidance or flagging this theme in earnings calls' },
+  order_flow:         { label: 'Order Activity',       description: 'Concrete orders or backlog expansion visible in filings' },
+  product_launch:     { label: 'Product Launch',       description: 'New product or major upgrade announced by key players' },
+  regulatory_change:  { label: 'Regulatory Shift',     description: 'Policy change or mandate creating structural demand' },
+  tech_breakthrough:  { label: 'Tech Breakthrough',    description: "Meaningful technology advance shifting what's possible" },
+  macro_shift:        { label: 'Macro Shift',          description: 'Broad economic or structural change creating tailwinds' },
+  pure_narrative:     { label: 'Narrative-Driven',     description: 'Primarily conversation-driven — watch for hard catalyst confirmation' },
 }
 
-function SourceRow({
-  source,
-  zscore,
-  cusum,
-  velocity,
-  acceleration,
-  count_1d,
-}: {
-  source: string
-  zscore: number
-  cusum: number
-  velocity: number
-  acceleration: number
-  count_1d: number
-}) {
-  const breaching = zscore >= 2.0 || cusum >= 4.0
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-sm font-semibold text-text-primary mb-3">{children}</h2>
+}
+
+function AnalystRow({ label, value }: { label: string; value: string | number }) {
   return (
     <tr className="border-t border-surface-border">
-      <td className="py-2 pr-4">
-        <div className="flex items-center gap-2">
-          {breaching && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
-          <span className="text-sm text-text-primary font-medium uppercase">{source}</span>
-        </div>
-      </td>
-      <td className="py-2 pr-4 font-tabular text-sm text-right">
-        <span className={zscore >= 2 ? 'text-accent' : 'text-text-secondary'}>{zscore.toFixed(2)}</span>
-      </td>
-      <td className="py-2 pr-4 font-tabular text-sm text-right">
-        <span className={cusum >= 4 ? 'text-accent' : 'text-text-secondary'}>{cusum.toFixed(2)}</span>
-      </td>
-      <td className="py-2 pr-4 font-tabular text-sm text-right text-text-secondary">
-        {velocity >= 0 ? '+' : ''}{velocity.toFixed(1)}
-      </td>
-      <td className="py-2 pr-4 font-tabular text-sm text-right text-text-secondary">
-        {acceleration >= 0 ? '+' : ''}{acceleration.toFixed(2)}
-      </td>
-      <td className="py-2 font-tabular text-sm text-right text-text-secondary">{count_1d}</td>
+      <td className="py-1.5 pr-4 text-[11px] text-muted w-28">{label}</td>
+      <td className="py-1.5 font-tabular text-[11px] text-text-secondary">{value}</td>
     </tr>
   )
 }
 
-const CHART_COLORS = {
-  composite: '#00e5a0',
-  grid: '#21262d',
-  axis: '#8b949e',
-}
-
 export function ThemeDetail() {
   const { id } = useParams<{ id: string }>()
+  const qc = useQueryClient()
+  const [analystOpen, setAnalystOpen] = useState(false)
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['theme', id],
     queryFn: () => api.getTheme(id!),
@@ -73,165 +49,239 @@ export function ThemeDetail() {
     refetchInterval: 60_000,
   })
 
+  const analyze = useMutation({
+    mutationFn: () => api.analyzeTheme(id!),
+    onSuccess: () => setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 4000),
+  })
+
   if (isLoading) {
     return (
-      <div className="p-8">
-        <div className="h-8 w-48 bg-surface-border/40 rounded animate-pulse mb-4" />
-        <div className="grid grid-cols-4 gap-3 mb-6">
-          {[...Array(4)].map((_, i) => <div key={i} className="h-20 rounded-lg bg-surface-border/30 animate-pulse" />)}
-        </div>
-        <div className="h-64 rounded-lg bg-surface-border/20 animate-pulse" />
+      <div className="p-8 space-y-4">
+        <div className="h-6 w-48 bg-surface-border/40 rounded animate-pulse" />
+        <div className="h-20 rounded-xl bg-surface-border/30 animate-pulse" />
+        <div className="h-48 rounded-xl bg-surface-border/20 animate-pulse" />
       </div>
     )
   }
 
   if (isError || !data) {
     return (
-      <div className="p-8 text-red-400 text-sm">
-        Failed to load theme. <Link to="/" className="underline text-accent">Back to dashboard</Link>
+      <div className="p-8 text-sm text-red-400">
+        Failed to load. <Link to="/" className="underline text-accent">Back</Link>
       </div>
     )
   }
 
-  const history = data.velocity_history
-  const chartData = history.map((h: VelocityPoint) => ({
+  const synthesis = data.synthesis
+  const confidence = data.confidence
+  const catalyst = synthesis ? (CATALYST_LABELS[synthesis.catalyst_type] ?? { label: synthesis.catalyst_type, description: '' }) : null
+
+  const chartData = data.velocity_history.map((h: VelocityPoint) => ({
     ...h,
     day: new Date(h.ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
   }))
 
   return (
     <div className="min-h-screen bg-surface">
-      <div className="px-4 py-4 max-w-5xl mx-auto">
+      <div className="px-4 py-4 max-w-4xl mx-auto space-y-4">
+
         {/* Breadcrumb */}
-        <div className="flex items-center gap-2 text-xs text-muted mb-4">
+        <div className="flex items-center gap-2 text-xs text-muted">
           <Link to="/" className="hover:text-text-primary transition-colors">Dashboard</Link>
           <span>/</span>
-          <span className="text-text-secondary">{data.name}</span>
+          <span className="text-text-secondary truncate">{data.name}</span>
         </div>
 
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl font-semibold text-text-primary">{data.name}</h1>
-              {data.breaching && (
-                <span className="text-xs px-2 py-0.5 rounded bg-accent/10 text-accent font-medium animate-pulse-accent">
-                  BREACHING
+        {/* ── Hero ── */}
+        <div className="card p-5">
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            {synthesis?.maturity_stage
+              ? <MaturityBadge stage={synthesis.maturity_stage} showSub />
+              : data.breaching && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-accent/10 text-accent border border-accent/20 font-medium animate-pulse-accent">
+                  New signal
                 </span>
-              )}
-              <span className="text-xs px-2 py-0.5 rounded bg-surface-border text-muted">
-                {data.status}
+              )
+            }
+          </div>
+
+          <h1 className="text-xl font-semibold text-text-primary mb-2">{data.name}</h1>
+
+          {synthesis?.one_line_thesis ? (
+            <p className="text-base text-text-secondary leading-relaxed mb-4">
+              {synthesis.one_line_thesis}
+            </p>
+          ) : (
+            <p className="text-sm text-muted italic mb-4">
+              Theme synthesis is running — check back in a moment.
+            </p>
+          )}
+
+          {/* Catalyst pill */}
+          {catalyst && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-surface-raised border border-surface-border">
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0 mt-0.5">
+                {catalyst.label}
               </span>
+              <p className="text-xs text-text-secondary">{synthesis?.catalyst_detail || catalyst.description}</p>
             </div>
-            {data.primitive && (
-              <p className="text-xs text-muted max-w-xl">{data.primitive}</p>
+          )}
+        </div>
+
+        {/* ── Signal snapshot ── */}
+        <div className="card p-5">
+          <SectionTitle>Signal snapshot</SectionTitle>
+          <SignalMeter
+            score={data.composite_score}
+            sourceDiversity={data.source_diversity}
+            earliness={data.earliness}
+          />
+        </div>
+
+        {/* ── How confident are we ── */}
+        {confidence && (
+          <div className="card p-5">
+            <SectionTitle>How confident are we?</SectionTitle>
+            <ConfidenceBreakdown
+              confidence={confidence}
+              catalystType={synthesis?.catalyst_type}
+            />
+          </div>
+        )}
+
+        {/* ── Who benefits ── */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <SectionTitle>Who benefits</SectionTitle>
+            {!synthesis && (
+              <button
+                onClick={() => analyze.mutate()}
+                disabled={analyze.isPending}
+                className="text-[11px] px-3 py-1 rounded-full bg-accent/10 text-accent border border-accent/20 hover:bg-accent/20 transition-colors disabled:opacity-50"
+              >
+                {analyze.isPending ? 'Analyzing…' : 'Run analysis'}
+              </button>
             )}
           </div>
-          <div className="shrink-0 text-right">
-            <p className="text-[10px] text-muted uppercase tracking-wider">Composite</p>
-            <p className={`font-tabular text-3xl font-medium ${
-              data.composite_score >= 70 ? 'text-velocity-high'
-              : data.composite_score >= 40 ? 'text-velocity-medium'
-              : 'text-velocity-low'
-            }`}>
-              {data.composite_score.toFixed(1)}
-            </p>
-          </div>
+          <WhosBenefiting nodes={data.beneficiaries} />
         </div>
 
-        {/* Stat cells */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
-          <StatCell label="Composite" value={data.composite_score.toFixed(1)} sub="0–100 signal" />
-          <StatCell label="Source Diversity" value={String(data.source_diversity)} sub="sources breaching" />
-          <StatCell label="Earliness" value={`${(data.earliness * 100).toFixed(0)}%`} sub="early vs mainstream" />
-          <StatCell label="Status" value={data.breaching ? 'BREACH' : 'Monitor'} sub={data.status} />
-        </div>
-
-        {/* Velocity Trajectory Chart — the validation instrument */}
-        <div className="card p-4 mb-5">
+        {/* ── Momentum chart ── */}
+        <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-text-primary">Velocity Trajectory</h2>
-            <span className="text-[10px] text-muted">composite score over time · daily</span>
+            <SectionTitle>Signal momentum over time</SectionTitle>
+            <span className="text-[10px] text-muted">daily · last 90 days</span>
           </div>
           {chartData.length === 0 ? (
-            <div className="h-48 flex items-center justify-center text-sm text-muted">
-              No velocity history yet. Run ingestion to populate.
+            <div className="h-40 flex items-center justify-center text-sm text-muted">
+              No history yet — run ingestion to populate.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={200}>
               <LineChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 4 }}>
                 <CartesianGrid stroke={CHART_COLORS.grid} strokeDasharray="3 3" vertical={false} />
-                <XAxis
-                  dataKey="day"
-                  tick={{ fontSize: 10, fill: CHART_COLORS.axis }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: CHART_COLORS.axis }}
-                  tickLine={false}
-                  axisLine={false}
-                  domain={[0, 100]}
-                />
+                <XAxis dataKey="day" tick={{ fontSize: 10, fill: CHART_COLORS.axis }} tickLine={false} axisLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: CHART_COLORS.axis }} tickLine={false} axisLine={false} domain={[0, 100]}
+                  tickFormatter={v => v === 0 ? '' : v === 100 ? 'Strong' : v === 50 ? 'Mid' : ''} />
                 <Tooltip
-                  contentStyle={{
-                    background: '#161b22',
-                    border: '1px solid #21262d',
-                    borderRadius: 6,
-                    fontSize: 11,
-                    color: '#e6edf3',
-                  }}
-                  formatter={(v: number) => [v.toFixed(1), 'score']}
+                  contentStyle={{ background: '#161b22', border: '1px solid #21262d', borderRadius: 6, fontSize: 11, color: '#e6edf3' }}
+                  formatter={(v: number) => [v.toFixed(0), 'Signal strength']}
                 />
-                {/* Z=2 threshold line */}
                 <ReferenceLine y={50} stroke="#f0a500" strokeDasharray="4 4" strokeWidth={1}
-                  label={{ value: 'threshold', position: 'right', fontSize: 9, fill: '#f0a500' }} />
-                <Line
-                  type="monotone"
-                  dataKey="composite_score"
-                  stroke={CHART_COLORS.composite}
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 4, fill: CHART_COLORS.composite, stroke: '#0d1117', strokeWidth: 2 }}
-                />
+                  label={{ value: 'Alert threshold', position: 'right', fontSize: 9, fill: '#f0a500' }} />
+                <Line type="monotone" dataKey="composite_score" stroke={CHART_COLORS.line} strokeWidth={2}
+                  dot={false} activeDot={{ r: 4, fill: CHART_COLORS.line, stroke: '#0d1117', strokeWidth: 2 }} />
               </LineChart>
             </ResponsiveContainer>
           )}
         </div>
 
-        {/* Per-source breakdown */}
-        <div className="card p-4 mb-5">
-          <h2 className="text-sm font-semibold text-text-primary mb-3">Source Breakdown</h2>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr>
-                  {['Source', 'Z-Score', 'CUSUM', 'Velocity', 'Accel', '1d Mentions'].map(h => (
-                    <th key={h} className="pb-2 pr-4 text-[10px] text-muted uppercase tracking-wider font-medium text-right first:text-left">
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.per_source.map(s => (
-                  <SourceRow key={s.source} {...s} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="mt-3 pt-3 border-t border-surface-border flex gap-4 text-[10px] text-muted">
-            <span><span className="text-accent font-medium">Z ≥ 2.0</span> = velocity breach</span>
-            <span><span className="text-accent font-medium">CUSUM ≥ 4.0</span> = structural break</span>
-          </div>
+        {/* ── Analyst view (collapsed) ── */}
+        <div className="card overflow-hidden">
+          <button
+            onClick={() => setAnalystOpen(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-3 text-xs text-muted hover:text-text-secondary transition-colors"
+          >
+            <span className="font-medium">Analyst view — technical signals</span>
+            <svg className={`w-4 h-4 transition-transform ${analystOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {analystOpen && (
+            <div className="px-5 pb-5 border-t border-surface-border pt-4">
+              <p className="text-[10px] text-muted mb-4">
+                Raw statistical signals — Z-score ≥ 2.0 and CUSUM ≥ 4.0 indicate a structural break in mention rate for that source.
+              </p>
+              <table className="w-full text-left">
+                <thead>
+                  <tr>
+                    {['Source', 'Z-Score', 'CUSUM', 'Velocity', 'Accel', '1d Mentions'].map(h => (
+                      <th key={h} className="pb-2 pr-4 text-[10px] text-muted uppercase tracking-wider font-medium text-right first:text-left">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.per_source.map(s => {
+                    const breach = s.zscore >= 2.0 || s.cusum >= 4.0
+                    return (
+                      <tr key={s.source} className="border-t border-surface-border">
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center gap-2">
+                            {breach && <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
+                            <span className="text-xs text-text-primary font-medium uppercase">{s.source}</span>
+                          </div>
+                        </td>
+                        <td className="py-2 pr-4 font-tabular text-xs text-right">
+                          <span className={s.zscore >= 2 ? 'text-accent' : 'text-text-secondary'}>{s.zscore.toFixed(2)}</span>
+                        </td>
+                        <td className="py-2 pr-4 font-tabular text-xs text-right">
+                          <span className={s.cusum >= 4 ? 'text-accent' : 'text-text-secondary'}>{s.cusum.toFixed(2)}</span>
+                        </td>
+                        <td className="py-2 pr-4 font-tabular text-xs text-right text-text-secondary">
+                          {s.velocity >= 0 ? '+' : ''}{s.velocity.toFixed(1)}
+                        </td>
+                        <td className="py-2 pr-4 font-tabular text-xs text-right text-text-secondary">
+                          {s.acceleration >= 0 ? '+' : ''}{s.acceleration.toFixed(2)}
+                        </td>
+                        <td className="py-2 font-tabular text-xs text-right text-text-secondary">{s.count_1d}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+
+              {/* Primitive */}
+              {data.primitive && (
+                <div className="mt-4 pt-3 border-t border-surface-border">
+                  <p className="text-[10px] text-muted uppercase tracking-wider mb-1">Economic primitive</p>
+                  <p className="text-xs text-text-secondary">{data.primitive}</p>
+                </div>
+              )}
+
+              {/* Confidence breakdown numbers */}
+              {confidence && (
+                <div className="mt-4 pt-3 border-t border-surface-border">
+                  <p className="text-[10px] text-muted uppercase tracking-wider mb-2">Confidence components</p>
+                  <table className="w-full">
+                    <tbody>
+                      <AnalystRow label="Velocity (0–25)"   value={`${confidence.c_velocity} / 25`} />
+                      <AnalystRow label="Source (0–20)"     value={`${confidence.c_source} / 20`}   />
+                      <AnalystRow label="Catalyst (0–20)"   value={`${confidence.c_catalyst} / 20`} />
+                      <AnalystRow label="Earliness (0–15)"  value={`${confidence.c_earliness} / 15`} />
+                      <AnalystRow label="Linkage (0–10)"    value={`${confidence.c_linkage} / 10`}  />
+                      <AnalystRow label="Liquidity (0–10)"  value={`${confidence.c_liquidity} / 10`} />
+                      <AnalystRow label="Total"             value={`${confidence.c_total} / 100`}   />
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* P2 placeholder */}
-        <div className="card p-6 border-dashed opacity-50">
-          <p className="text-xs text-muted text-center">
-            Confidence radar + value-chain map — Phase 2 / 3
-          </p>
-        </div>
       </div>
     </div>
   )
