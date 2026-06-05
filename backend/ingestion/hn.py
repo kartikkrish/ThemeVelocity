@@ -50,7 +50,7 @@ class HNFetcher(Fetcher):
             "query": term,
             "numericFilters": f"created_at_i>{since_ts}",
             "hitsPerPage": 50,
-            "tags": "story,comment",
+            "tags": "(story,comment)",   # parens = OR; "story,comment" means AND -> always empty
         }
         resp = self._session.get(HN_SEARCH, params=params, timeout=15)
         resp.raise_for_status()

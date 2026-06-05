@@ -42,15 +42,16 @@ class GDELTFetcher(Fetcher):
         for term in self._query_terms:
             try:
                 events.extend(self._fetch_term(term, since))
-                time.sleep(0.5)   # GDELT asks for polite access
+                time.sleep(1.5)   # GDELT is aggressive on rate-limits; be patient
             except Exception as exc:
                 log.warning("GDELT fetch failed for term=%r: %s", term, exc)
         return events
 
-    def _fetch_term(self, term: str, since: datetime) -> list[RawEvent]:
-        # Use artlist mode: returns list of articles matching query
+    def _fetch_term(self, term: str, since: datetime, _retries: int = 3) -> list[RawEvent]:
+        # Multi-word terms must be phrase-quoted or GDELT ORs the tokens
+        query = f'"{term}"' if " " in term else term
         params = {
-            "query": term,
+            "query": query,
             "mode": "artlist",
             "maxrecords": 75,
             "format": "json",
@@ -59,7 +60,12 @@ class GDELTFetcher(Fetcher):
             "sort": "DateDesc",
         }
         resp = self._session.get(GDELT_DOC, params=params, timeout=30)
+        if resp.status_code == 429 and _retries > 0:
+            time.sleep(5)   # backoff on rate-limit
+            return self._fetch_term(term, since, _retries - 1)
         resp.raise_for_status()
+        if not resp.text.strip():
+            return []
         data = resp.json()
         articles = data.get("articles", [])
         results: list[RawEvent] = []
