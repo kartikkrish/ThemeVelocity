@@ -4,7 +4,7 @@ Decomposes a confirmed theme into ordered beneficiary nodes:
   direct → first_order → second_order → proxy
 
 Both US and India tickers where applicable.
-Gated: only runs when ANTHROPIC_API_KEY is set.
+Gated: only runs when a model provider is configured.
 """
 from __future__ import annotations
 
@@ -12,50 +12,54 @@ import logging
 
 from backend import config
 from backend.db import store
+from backend.engine.model_provider import get_provider
 
 log = logging.getLogger(__name__)
 
-_TOOL = {
-    "name": "submit_value_chain",
-    "description": "Submit the value-chain decomposition for an investment theme",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "nodes": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "node_role": {
-                            "type": "string",
-                            "enum": ["direct", "first_order", "second_order", "proxy"],
-                        },
-                        "company_name": {"type": "string"},
-                        "ticker": {"type": "string", "description": "Stock ticker; empty string if private"},
-                        "exchange": {
-                            "type": "string",
-                            "enum": ["NYSE", "NASDAQ", "NSE", "BSE", "OTC", ""],
-                        },
-                        "linkage_tightness": {
-                            "type": "string",
-                            "enum": ["tight", "moderate", "loose"],
-                        },
-                        "justification": {
-                            "type": "string",
-                            "description": "1-sentence plain English explanation of why this company benefits",
-                        },
-                        "epistemic_tag": {
-                            "type": "string",
-                            "enum": ["V", "E", "I"],
-                        },
+_TOOL_NAME = "submit_value_chain"
+_TOOL_DESCRIPTION = "Submit the value-chain decomposition for an investment theme"
+_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "nodes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "node_role": {
+                        "type": "string",
+                        "enum": ["direct", "first_order", "second_order", "proxy"],
                     },
-                    "required": ["node_role", "company_name", "ticker", "exchange",
-                                 "linkage_tightness", "justification", "epistemic_tag"],
+                    "company_name": {"type": "string"},
+                    "ticker": {
+                        "type": "string",
+                        "description": "Stock ticker; empty string if private",
+                    },
+                    "exchange": {
+                        "type": "string",
+                        "enum": ["NYSE", "NASDAQ", "NSE", "BSE", "OTC", ""],
+                    },
+                    "linkage_tightness": {
+                        "type": "string",
+                        "enum": ["tight", "moderate", "loose"],
+                    },
+                    "justification": {
+                        "type": "string",
+                        "description": "1-sentence plain English explanation of why this company benefits",
+                    },
+                    "epistemic_tag": {
+                        "type": "string",
+                        "enum": ["V", "E", "I"],
+                    },
                 },
+                "required": [
+                    "node_role", "company_name", "ticker", "exchange",
+                    "linkage_tightness", "justification", "epistemic_tag",
+                ],
             },
         },
-        "required": ["nodes"],
     },
+    "required": ["nodes"],
 }
 
 _SYSTEM = (
@@ -86,8 +90,9 @@ def _build_prompt(theme_name: str, primitive: str, thesis: str) -> str:
 
 def run_value_chain(theme_id: str) -> list[dict] | None:
     """Run LLM value-chain decomposition. Returns list of node dicts or None."""
-    if not config.ANTHROPIC_API_KEY:
-        log.debug("value_chain skipped — ANTHROPIC_API_KEY not set")
+    provider = get_provider(config.VALUE_CHAIN_MODEL)
+    if not provider:
+        log.debug("value_chain skipped — no model provider configured")
         return None
 
     theme = store.get_theme(theme_id)
@@ -100,46 +105,31 @@ def run_value_chain(theme_id: str) -> list[dict] | None:
         log.debug("value_chain skipped — no synthesis yet for %s", theme_id)
         return None
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
+    result = provider.structured_completion(
+        system=_SYSTEM,
+        user=_build_prompt(theme["name"], theme.get("primitive", ""), thesis),
+        tool_name=_TOOL_NAME,
+        tool_description=_TOOL_DESCRIPTION,
+        tool_schema=_TOOL_SCHEMA,
+        max_tokens=2048,
+    )
+    if not result:
+        return None
 
-    try:
-        resp = client.messages.create(
-            model=config.VALUE_CHAIN_MODEL,
-            max_tokens=2048,
-            system=_SYSTEM,
-            tools=[_TOOL],
-            tool_choice={"type": "tool", "name": "submit_value_chain"},
-            messages=[{
-                "role": "user",
-                "content": _build_prompt(
-                    theme["name"],
-                    theme.get("primitive", ""),
-                    thesis,
-                ),
-            }],
-        )
-        for block in resp.content:
-            if block.type == "tool_use" and block.name == "submit_value_chain":
-                nodes_raw = block.input.get("nodes", [])
-                nodes = [
-                    {
-                        "theme_id": theme_id,
-                        "node_role": n.get("node_role", "proxy"),
-                        "ticker": n.get("ticker", ""),
-                        "exchange": n.get("exchange", ""),
-                        "company_name": n.get("company_name", ""),
-                        "linkage_tightness": n.get("linkage_tightness", "loose"),
-                        "justification": n.get("justification", ""),
-                        "liquidity_flag": "ok",
-                        "epistemic_tag": n.get("epistemic_tag", "I"),
-                    }
-                    for n in nodes_raw
-                ]
-                store.replace_value_chain(theme_id, nodes)
-                log.info("value_chain stored: %s nodes for %s", len(nodes), theme_id)
-                return nodes
-    except Exception as exc:
-        log.warning("value_chain LLM call failed for %s: %s", theme_id, exc)
-
-    return None
+    nodes = [
+        {
+            "theme_id": theme_id,
+            "node_role": n.get("node_role", "proxy"),
+            "ticker": n.get("ticker", ""),
+            "exchange": n.get("exchange", ""),
+            "company_name": n.get("company_name", ""),
+            "linkage_tightness": n.get("linkage_tightness", "loose"),
+            "justification": n.get("justification", ""),
+            "liquidity_flag": "ok",
+            "epistemic_tag": n.get("epistemic_tag", "I"),
+        }
+        for n in result.get("nodes", [])
+    ]
+    store.replace_value_chain(theme_id, nodes)
+    log.info("value_chain stored: %d nodes for %s", len(nodes), theme_id)
+    return nodes

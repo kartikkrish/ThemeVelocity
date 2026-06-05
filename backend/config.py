@@ -27,10 +27,15 @@ WINDOWS = [1, 7, 30, 90]
 WINDOW_BASELINES: dict[int, int] = {1: 30, 7: 60, 30: 90}   # window → baseline days
 COMPOSITE_WINDOW = 1   # window used as primary composite signal
 
-# Agentic layer
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# Agentic layer — model provider
+MODEL_PROVIDER = os.getenv("TV_MODEL_PROVIDER", "anthropic")  # anthropic | gemini | ollama
+MODEL_API_KEY  = os.getenv("MODEL_API_KEY") or os.getenv("ANTHROPIC_API_KEY", "")
+MODEL_BASE_URL = os.getenv("TV_MODEL_BASE_URL", "")           # ollama / custom endpoint
 SYNTHESIS_MODEL   = os.getenv("TV_SYNTHESIS_MODEL",   "claude-haiku-4-5-20251001")
 VALUE_CHAIN_MODEL = os.getenv("TV_VALUE_CHAIN_MODEL",  "claude-sonnet-4-6")
+
+# Backward compatibility
+ANTHROPIC_API_KEY = MODEL_API_KEY
 
 # Alerts
 TELEGRAM_TOKEN   = os.getenv("TV_TELEGRAM_TOKEN", "")

@@ -5,67 +5,69 @@ FR-SYN-2: Catalyst classification (earnings / product / regulatory / narrative /
 FR-SYN-3: Noise/meme filter — LLM judges whether spike is tradable or manipulated
 FR-SYN-4: V/E/I epistemic tags on all claims
 
-Gated: only runs when ANTHROPIC_API_KEY is set. Degrades gracefully without it.
+Gated: only runs when a model provider is configured. Degrades gracefully without one.
 """
 from __future__ import annotations
 
-import json
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 
 from backend import config
 from backend.db import store
+from backend.engine.model_provider import get_provider
 
 log = logging.getLogger(__name__)
 
-_TOOL = {
-    "name": "submit_synthesis",
-    "description": "Submit structured theme synthesis result",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "one_line_thesis": {
-                "type": "string",
-                "description": "Plain-English 1-sentence explanation of why this theme matters for investors RIGHT NOW — no jargon, accessible to a smart non-specialist.",
-            },
-            "catalyst_type": {
-                "type": "string",
-                "enum": ["earnings_guidance", "product_launch", "regulatory_change",
-                         "order_flow", "tech_breakthrough", "macro_shift", "pure_narrative"],
-            },
-            "catalyst_detail": {
-                "type": "string",
-                "description": "1-sentence plain English description of the specific catalyst driving current acceleration.",
-            },
-            "maturity_stage": {
-                "type": "string",
-                "enum": ["early_discovery", "building_momentum", "mainstream_known"],
-            },
-            "is_real_theme": {
-                "type": "boolean",
-                "description": "Is this a genuine business/investment theme vs noise or coordinated pump?",
-            },
-            "noise_reason": {
-                "type": ["string", "null"],
-                "description": "If is_real_theme=false, brief explanation. Else null.",
-            },
-            "key_entities": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Up to 5 company/technology names most central to this theme.",
-            },
-            "epistemic_tag": {
-                "type": "string",
-                "enum": ["V", "E", "I"],
-                "description": "V=verified by filings/announcements, E=analyst estimates, I=inferred from narrative.",
-            },
+_TOOL_NAME = "submit_synthesis"
+_TOOL_DESCRIPTION = "Submit structured theme synthesis result"
+_TOOL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "one_line_thesis": {
+            "type": "string",
+            "description": (
+                "Plain-English 1-sentence explanation of why this theme matters for investors "
+                "RIGHT NOW — no jargon, accessible to a smart non-specialist."
+            ),
         },
-        "required": [
-            "one_line_thesis", "catalyst_type", "catalyst_detail",
-            "maturity_stage", "is_real_theme", "key_entities", "epistemic_tag",
-        ],
+        "catalyst_type": {
+            "type": "string",
+            "enum": [
+                "earnings_guidance", "product_launch", "regulatory_change",
+                "order_flow", "tech_breakthrough", "macro_shift", "pure_narrative",
+            ],
+        },
+        "catalyst_detail": {
+            "type": "string",
+            "description": "1-sentence plain English description of the specific catalyst driving current acceleration.",
+        },
+        "maturity_stage": {
+            "type": "string",
+            "enum": ["early_discovery", "building_momentum", "mainstream_known"],
+        },
+        "is_real_theme": {
+            "type": "boolean",
+            "description": "Is this a genuine business/investment theme vs noise or coordinated pump?",
+        },
+        "noise_reason": {
+            "type": ["string", "null"],
+            "description": "If is_real_theme=false, brief explanation. Else null.",
+        },
+        "key_entities": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Up to 5 company/technology names most central to this theme.",
+        },
+        "epistemic_tag": {
+            "type": "string",
+            "enum": ["V", "E", "I"],
+            "description": "V=verified by filings/announcements, E=analyst estimates, I=inferred from narrative.",
+        },
     },
+    "required": [
+        "one_line_thesis", "catalyst_type", "catalyst_detail",
+        "maturity_stage", "is_real_theme", "key_entities", "epistemic_tag",
+    ],
 }
 
 _SYSTEM = (
@@ -88,8 +90,9 @@ def _build_prompt(theme_name: str, primitive: str, events: list[str]) -> str:
 
 def run_synthesis(theme_id: str) -> dict | None:
     """Run LLM synthesis for a theme. Returns the result dict or None if unavailable."""
-    if not config.ANTHROPIC_API_KEY:
-        log.debug("synthesis skipped — ANTHROPIC_API_KEY not set")
+    provider = get_provider(config.SYNTHESIS_MODEL)
+    if not provider:
+        log.debug("synthesis skipped — no model provider configured")
         return None
 
     theme = store.get_theme(theme_id)
@@ -97,33 +100,23 @@ def run_synthesis(theme_id: str) -> dict | None:
         return None
 
     since = datetime.now(timezone.utc) - timedelta(hours=48)
-    events = [r["raw_text"] for r in store.get_recent_theme_events(theme_id, since, limit=25) if r.get("raw_text")]
+    events = [
+        r["raw_text"]
+        for r in store.get_recent_theme_events(theme_id, since, limit=25)
+        if r.get("raw_text")
+    ]
     if len(events) < 3:
         log.debug("synthesis skipped — too few events (%d) for %s", len(events), theme_id)
         return None
 
-    import anthropic
-    client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-
-    try:
-        resp = client.messages.create(
-            model=config.SYNTHESIS_MODEL,
-            max_tokens=1024,
-            system=_SYSTEM,
-            tools=[_TOOL],
-            tool_choice={"type": "tool", "name": "submit_synthesis"},
-            messages=[{
-                "role": "user",
-                "content": _build_prompt(theme["name"], theme.get("primitive", ""), events),
-            }],
-        )
-        for block in resp.content:
-            if block.type == "tool_use" and block.name == "submit_synthesis":
-                return block.input
-    except Exception as exc:
-        log.warning("synthesis LLM call failed for %s: %s", theme_id, exc)
-
-    return None
+    return provider.structured_completion(
+        system=_SYSTEM,
+        user=_build_prompt(theme["name"], theme.get("primitive", ""), events),
+        tool_name=_TOOL_NAME,
+        tool_description=_TOOL_DESCRIPTION,
+        tool_schema=_TOOL_SCHEMA,
+        max_tokens=1024,
+    )
 
 
 def synthesize_and_store(theme_id: str, velocity_result) -> dict | None:
