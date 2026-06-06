@@ -178,7 +178,7 @@ export const api = {
   getTrending:         (tab = 'daily', limit = 20) => get<ThemeHeat[]>('/themes/trending', { tab, limit }),
   getTheme:            (id: string) => get<ThemeDetail>(`/themes/${id}`),
   getAlerts:           (limit = 50) => get<AlertItem[]>('/alerts', { limit }),
-  analyzeTheme:        (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/analyze`),
+  analyzeTheme:        (id: string) => post<{ status: string; theme_id: string; reason?: string }>(`/themes/${id}/analyze`),
   triggerIngest:       () => post<{ status: string }>('/ingest/trigger'),
   runVelocity:         () => post<{ computed: number; breaching: string[] }>('/velocity/run'),
   getModelSettings:    () => get<ModelSettings>('/settings/model'),
@@ -186,6 +186,6 @@ export const api = {
   testModelSettings:   (body: ModelSettingsUpdate) => postJson<ModelTestResult>('/settings/model/test', body),
   getWatchlist:        () => get<WatchlistItem[]>('/watchlist'),
   toggleWatchlist:     (id: string) => post<{ theme_id: string; pinned: boolean }>(`/watchlist/${id}`),
-  triggerIndia:        (id: string) => post<{ status: string; theme_id: string }>(`/themes/${id}/india`),
+  triggerIndia:        (id: string) => post<{ status: string; theme_id: string; reason?: string }>(`/themes/${id}/india`),
   getSignalTimeline:   (id: string) => get<Record<string, SignalTimelinePoint[]>>(`/themes/${id}/signal-timeline`),
 }

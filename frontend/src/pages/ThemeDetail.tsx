@@ -82,14 +82,24 @@ export function ThemeDetail() {
     refetchInterval: 60_000,
   })
 
+  const [llmNotice, setLlmNotice] = useState<string | null>(null)
+
   const analyze = useMutation({
     mutationFn: () => api.analyzeTheme(id!),
-    onSuccess: () => setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 4000),
+    onSuccess: (res) => {
+      if (res.status === 'unavailable') { setLlmNotice(res.reason ?? 'Model unavailable.'); return }
+      setLlmNotice(null)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 4000)
+    },
   })
 
   const india = useMutation({
     mutationFn: () => api.triggerIndia(id!),
-    onSuccess: () => setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 5000),
+    onSuccess: (res: { status: string; reason?: string }) => {
+      if (res.status === 'unavailable') { setLlmNotice(res.reason ?? 'Model unavailable.'); return }
+      setLlmNotice(null)
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['theme', id] }), 5000)
+    },
   })
 
   if (isLoading) {
@@ -212,6 +222,11 @@ export function ThemeDetail() {
               </button>
             )}
           </div>
+          {llmNotice && (
+            <div className="mb-3 text-[11px] px-3 py-2 rounded-lg bg-amber-400/10 text-amber-400 border border-amber-400/20">
+              ⚠ {llmNotice} The velocity radar below works without it.
+            </div>
+          )}
           <WhosBenefiting nodes={data.beneficiaries} />
         </div>
 

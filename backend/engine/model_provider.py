@@ -176,6 +176,34 @@ def is_low_confidence_model(model: str | None) -> bool:
     return any(h in m for h in _LOW_CONFIDENCE_MODEL_HINTS)
 
 
+def probe_provider() -> tuple[bool, str]:
+    """
+    Cheap reachability check for the active provider — does NOT spend tokens.
+      anthropic / gemini : API key must be present.
+      ollama             : daemon must answer on its base URL.
+    Returns (available, reason). reason is human-readable when unavailable.
+    """
+    cfg = _effective_settings()
+    ptype = cfg["provider"].lower()
+
+    if ptype in ("anthropic", "gemini"):
+        if not cfg["api_key"]:
+            return False, f"No API key set for {ptype}. Add one in Settings → Model."
+        return True, ""
+
+    if ptype == "ollama":
+        base = cfg["base_url"] or "http://localhost:11434/v1"
+        models_url = base.rstrip("/") + "/models"
+        try:
+            import requests
+            requests.get(models_url, timeout=2).raise_for_status()
+            return True, ""
+        except Exception:
+            return False, f"Ollama not reachable at {base}. Start it with: ollama serve"
+
+    return False, f"Unknown provider '{cfg['provider']}'."
+
+
 def get_synthesis_model() -> str:
     return _effective_settings()["synthesis_model"]
 

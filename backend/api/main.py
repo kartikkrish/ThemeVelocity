@@ -69,8 +69,13 @@ async def lifespan(app: FastAPI):
     store.init_db()
     tagger.load()
     scheduler = BackgroundScheduler(timezone="UTC")
-    scheduler.add_job(_edgar_job, "interval", seconds=config.EDGAR_POLL_SEC, id="ingest_edgar")
-    scheduler.add_job(_hn_gdelt_job, "interval", seconds=config.HN_POLL_SEC, id="ingest_hn_gdelt")
+    # next_run_time=now → fire once at boot, then on interval, so a fresh start
+    # isn't blind until the first full interval elapses.
+    boot = datetime.now(timezone.utc)
+    scheduler.add_job(_edgar_job, "interval", seconds=config.EDGAR_POLL_SEC,
+                      id="ingest_edgar", next_run_time=boot)
+    scheduler.add_job(_hn_gdelt_job, "interval", seconds=config.HN_POLL_SEC,
+                      id="ingest_hn_gdelt", next_run_time=boot)
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
@@ -254,6 +259,11 @@ def get_alerts(limit: int = 50):
 @app.post("/api/themes/{theme_id}/analyze")
 def analyze_theme(theme_id: str, background_tasks: BackgroundTasks):
     """Trigger LLM synthesis + value-chain for a specific theme."""
+    from backend.engine.model_provider import probe_provider
+    available, reason = probe_provider()
+    if not available:
+        return {"status": "unavailable", "theme_id": theme_id, "reason": reason}
+
     def _run():
         from backend.engine.synthesis import synthesize_and_store
         from backend.engine.value_chain import run_value_chain
@@ -388,6 +398,11 @@ def toggle_watchlist(theme_id: str):
 
 @app.post("/api/themes/{theme_id}/india")
 def trigger_india_crossmap(theme_id: str, background_tasks: BackgroundTasks):
+    from backend.engine.model_provider import probe_provider
+    available, reason = probe_provider()
+    if not available:
+        return {"status": "unavailable", "theme_id": theme_id, "reason": reason}
+
     def _run():
         from backend.engine.india_crossmap import run_india_crossmap
         run_india_crossmap(theme_id)
