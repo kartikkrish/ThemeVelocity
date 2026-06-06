@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS theme_analysis (
   c_liquidity     REAL,
   c_total         REAL,
   dominant_tag    TEXT,
+  synth_model     TEXT,         -- model that produced this synthesis (for confidence flagging)
   PRIMARY KEY (theme_id, analyzed_at)
 );
 

@@ -79,8 +79,9 @@ def compute_confidence(velocity_result, synthesis: dict | None, value_chain_coun
 
     c_total = round(min(c_velocity + c_source + c_catalyst + c_earliness + c_linkage + c_liquidity, 100.0), 1)
 
-    # Epistemic tag: weakest critical input dominates
-    epis = synthesis.get("epistemic_tag", "I") if synthesis else "I"
+    # Epistemic tag: weakest critical input dominates.
+    # `or "I"` (not .get default) because models may return an explicit null.
+    epis = (synthesis.get("epistemic_tag") if synthesis else None) or "I"
 
     return ConfidenceScore(
         c_velocity=c_velocity,

@@ -146,6 +146,7 @@ def synthesize_and_store(theme_id: str, velocity_result) -> dict | None:
         "c_liquidity": score.c_liquidity,
         "c_total": score.c_total,
         "dominant_tag": score.epistemic_tag,
+        "synth_model": get_synthesis_model(),
     }
     store.upsert_theme_analysis(row)
     return row

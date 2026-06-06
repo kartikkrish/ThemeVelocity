@@ -164,6 +164,14 @@ export function ThemeDetail() {
               <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-400/10 text-amber-400 border border-amber-400/20 shrink-0 mt-0.5">
                 {catalyst.label}
               </span>
+              {synthesis?.catalyst_low_confidence && (
+                <span
+                  title="Catalyst type classified by a small local model — treat as a guess, not a confirmed catalyst."
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-text-secondary/10 text-text-secondary border border-surface-border shrink-0 mt-0.5"
+                >
+                  low-confidence
+                </span>
+              )}
               <p className="text-xs text-text-secondary">{synthesis?.catalyst_detail || catalyst.description}</p>
             </div>
           )}

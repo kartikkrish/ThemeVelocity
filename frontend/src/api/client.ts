@@ -40,6 +40,7 @@ export interface SynthesisData {
   key_entities: string[]
   epistemic_tag: string
   noise_reason?: string | null
+  catalyst_low_confidence?: boolean
 }
 
 export interface ConfidenceData {

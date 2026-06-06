@@ -163,6 +163,19 @@ def _effective_settings() -> dict:
     }
 
 
+# Small local models whose structured classification (e.g. catalyst_type) is unreliable.
+# Their free-text (thesis) is usable, but enum classification should be flagged low-confidence.
+_LOW_CONFIDENCE_MODEL_HINTS = ("qwen", "gemma", "llama", "mistral", "phi", "ollama")
+
+
+def is_low_confidence_model(model: str | None) -> bool:
+    """True if `model` is a small local model whose enum classifications shouldn't be trusted."""
+    if not model:
+        return False
+    m = model.lower()
+    return any(h in m for h in _LOW_CONFIDENCE_MODEL_HINTS)
+
+
 def get_synthesis_model() -> str:
     return _effective_settings()["synthesis_model"]
 

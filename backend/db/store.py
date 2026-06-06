@@ -26,7 +26,15 @@ def init_db() -> None:
     schema = _SCHEMA.read_text()
     conn = _conn()
     conn.executescript(schema)
+    _migrate(conn)
     conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent column additions for tables created before a schema change."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(theme_analysis)")}
+    if "synth_model" not in cols:
+        conn.execute("ALTER TABLE theme_analysis ADD COLUMN synth_model TEXT")
 
 
 def upsert_event(row: dict) -> bool:
@@ -197,10 +205,10 @@ def upsert_theme_analysis(row: dict) -> None:
         """INSERT INTO theme_analysis
            (theme_id,analyzed_at,one_line_thesis,is_real_theme,catalyst_type,catalyst_detail,
             maturity_stage,earliness,c_velocity,c_source,c_catalyst,c_earliness,
-            c_linkage,c_liquidity,c_total,dominant_tag)
+            c_linkage,c_liquidity,c_total,dominant_tag,synth_model)
            VALUES(:theme_id,:analyzed_at,:one_line_thesis,:is_real_theme,:catalyst_type,
                   :catalyst_detail,:maturity_stage,:earliness,:c_velocity,:c_source,
-                  :c_catalyst,:c_earliness,:c_linkage,:c_liquidity,:c_total,:dominant_tag)
+                  :c_catalyst,:c_earliness,:c_linkage,:c_liquidity,:c_total,:dominant_tag,:synth_model)
            ON CONFLICT(theme_id,analyzed_at) DO UPDATE SET
              one_line_thesis=excluded.one_line_thesis,
              is_real_theme=excluded.is_real_theme,
@@ -210,7 +218,8 @@ def upsert_theme_analysis(row: dict) -> None:
              c_velocity=excluded.c_velocity, c_source=excluded.c_source,
              c_catalyst=excluded.c_catalyst, c_earliness=excluded.c_earliness,
              c_linkage=excluded.c_linkage, c_liquidity=excluded.c_liquidity,
-             c_total=excluded.c_total, dominant_tag=excluded.dominant_tag""",
+             c_total=excluded.c_total, dominant_tag=excluded.dominant_tag,
+             synth_model=excluded.synth_model""",
         row,
     )
     conn.commit()

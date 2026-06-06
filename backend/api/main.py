@@ -161,6 +161,8 @@ def get_theme(theme_id: str):
     synthesis_out = None
     confidence_out = None
     if analysis:
+        from backend.engine.model_provider import is_low_confidence_model
+        synth_model = analysis["synth_model"] if "synth_model" in analysis.keys() else None
         synthesis_out = SynthesisData(
             one_line_thesis=analysis["one_line_thesis"] or "",
             catalyst_type=analysis["catalyst_type"] or "",
@@ -169,6 +171,7 @@ def get_theme(theme_id: str):
             is_real_theme=bool(analysis["is_real_theme"]),
             key_entities=[],
             epistemic_tag=analysis["dominant_tag"] or "I",
+            catalyst_low_confidence=is_low_confidence_model(synth_model),
         )
         confidence_out = ConfidenceData(
             c_velocity=analysis["c_velocity"] or 0,

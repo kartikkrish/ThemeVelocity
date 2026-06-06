@@ -66,6 +66,7 @@ class SynthesisData(BaseModel):
     key_entities: list[str]
     epistemic_tag: str
     noise_reason: str | None = None
+    catalyst_low_confidence: bool = False   # true when a small local model classified the catalyst
 
 
 class WatchlistItem(BaseModel):
