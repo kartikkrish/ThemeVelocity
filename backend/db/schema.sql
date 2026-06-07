@@ -123,7 +123,18 @@ CREATE TABLE IF NOT EXISTS india_crossmap (
   epistemic_tag     TEXT
 );
 
+-- Open-vocabulary discovery: per-term mention counts per source per day
+CREATE TABLE IF NOT EXISTS term_counts (
+  term    TEXT NOT NULL,
+  source  TEXT NOT NULL,
+  day     TEXT NOT NULL,   -- YYYY-MM-DD
+  count   INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (term, source, day)
+);
+
 CREATE INDEX IF NOT EXISTS idx_events_source_published ON events(source, published_at);
 CREATE INDEX IF NOT EXISTS idx_event_themes_theme ON event_themes(theme_id);
 CREATE INDEX IF NOT EXISTS idx_velocity_theme_ts ON velocity_snapshots(theme_id, ts);
 CREATE INDEX IF NOT EXISTS idx_composite_theme_ts ON composite_velocity(theme_id, ts);
+CREATE INDEX IF NOT EXISTS idx_term_counts_term ON term_counts(term, source);
+CREATE INDEX IF NOT EXISTS idx_term_counts_day ON term_counts(day);

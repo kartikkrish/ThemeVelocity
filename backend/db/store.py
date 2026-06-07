@@ -363,3 +363,79 @@ def was_alerted_recently(theme_id: str, hours: int = 24) -> bool:
         (theme_id, cutoff),
     ).fetchone()
     return row is not None
+
+
+# ---------------------------------------------------------------------------
+# Discovery engine helpers
+# ---------------------------------------------------------------------------
+
+def get_events_since_published(since: datetime) -> list[dict]:
+    """All events published after `since`, for term extraction."""
+    rows = _conn().execute(
+        """SELECT event_id, source, raw_text, published_at
+           FROM events WHERE published_at >= ? ORDER BY published_at DESC LIMIT 10000""",
+        (since.isoformat(),),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def replace_term_counts(entries: list[tuple]) -> None:
+    """Insert or replace (term, source, day) counts.
+
+    Uses INSERT OR REPLACE so re-running discovery on the same window
+    recomputes counts from scratch rather than accumulating duplicates.
+    """
+    conn = _conn()
+    conn.executemany(
+        "INSERT OR REPLACE INTO term_counts(term, source, day, count) VALUES(?,?,?,?)",
+        [(term, src, day, cnt) for (term, src, day), cnt in entries],
+    )
+    conn.commit()
+
+
+def get_term_candidates(min_sources: int, min_total: int, since_days: int) -> list[str]:
+    """Terms seen in >= min_sources independent sources with >= min_total
+    mentions in the last since_days days, ordered by total mentions desc."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).strftime("%Y-%m-%d")
+    rows = _conn().execute(
+        """SELECT term, COUNT(DISTINCT source) AS src_count, SUM(count) AS total
+           FROM term_counts
+           WHERE day >= ?
+           GROUP BY term
+           HAVING src_count >= ? AND total >= ?
+           ORDER BY total DESC
+           LIMIT 1000""",
+        (cutoff, min_sources, min_total),
+    ).fetchall()
+    return [r["term"] for r in rows]
+
+
+def get_term_sources(term: str) -> list[str]:
+    """Distinct sources that have seen this term."""
+    rows = _conn().execute(
+        "SELECT DISTINCT source FROM term_counts WHERE term=?", (term,)
+    ).fetchall()
+    return [r["source"] for r in rows]
+
+
+def get_term_history(term: str, source: str, since_days: int) -> list[dict]:
+    """Daily counts for (term, source) over the last since_days days."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).strftime("%Y-%m-%d")
+    rows = _conn().execute(
+        """SELECT day, SUM(count) AS count
+           FROM term_counts WHERE term=? AND source=? AND day>=?
+           GROUP BY day ORDER BY day""",
+        (term, source, cutoff),
+    ).fetchall()
+    return [{"day": r["day"], "count": r["count"]} for r in rows]
+
+
+def prune_term_counts(keep_days: int = 90) -> None:
+    """Delete term_counts rows older than keep_days."""
+    from datetime import timedelta
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=keep_days)).strftime("%Y-%m-%d")
+    conn = _conn()
+    conn.execute("DELETE FROM term_counts WHERE day < ?", (cutoff,))
+    conn.commit()

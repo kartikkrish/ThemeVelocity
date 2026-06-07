@@ -75,3 +75,52 @@ class HNFetcher(Fetcher):
                 )
             )
         return results
+
+
+class HNFirehoseFetcher(Fetcher):
+    """Fetches ALL recent HN stories — no keyword filter.
+
+    Used by the discovery engine so that emerging topics that are not yet
+    in the seed lexicon can be detected and auto-promoted.
+    """
+    source = "hn"
+    source_weight = 0.7
+
+    def __init__(self):
+        self._session = _session_with_retry()
+
+    def fetch(self, since: datetime) -> list[RawEvent]:
+        since_ts = int(since.timestamp())
+        params = {
+            "tags": "story",
+            "numericFilters": f"created_at_i>{since_ts}",
+            "hitsPerPage": 200,
+        }
+        try:
+            resp = self._session.get(HN_SEARCH, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            log.warning("HN firehose fetch failed: %s", exc)
+            return []
+
+        results: list[RawEvent] = []
+        for hit in data.get("hits", []):
+            ts_i = hit.get("created_at_i", 0)
+            if not ts_i:
+                continue
+            pub = datetime.fromtimestamp(ts_i, tz=timezone.utc)
+            title = hit.get("title") or ""
+            if not title:
+                continue
+            story_url = hit.get("url") or f"https://news.ycombinator.com/item?id={hit.get('objectID','')}"
+            obj_id = hit.get("objectID", "")
+            results.append(RawEvent(
+                source=self.source,
+                source_weight=self.source_weight,
+                published_at=pub,
+                raw_text=title[:2000],
+                url=story_url,
+                event_id=f"hn_{obj_id}",
+            ))
+        return results

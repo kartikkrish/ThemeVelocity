@@ -64,6 +64,10 @@ def _hn_gdelt_job():
     log.info("hn/gdelt ingestion complete: %s", counts)
 
 
+def _prune_job():
+    store.prune_term_counts(keep_days=90)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     store.init_db()
@@ -76,6 +80,7 @@ async def lifespan(app: FastAPI):
                       id="ingest_edgar", next_run_time=boot)
     scheduler.add_job(_hn_gdelt_job, "interval", seconds=config.HN_POLL_SEC,
                       id="ingest_hn_gdelt", next_run_time=boot)
+    scheduler.add_job(_prune_job, "cron", hour=3, minute=0, id="prune_terms")
     scheduler.start()
     yield
     scheduler.shutdown(wait=False)
@@ -433,3 +438,32 @@ def run_velocity():
         "computed": len(results),
         "breaching": [r.theme_id for r in results if r.breaching],
     }
+
+
+@app.get("/api/discovery/candidates")
+def get_discovery_candidates(limit: int = 50, min_sources: int = 2, min_total: int = 5):
+    """Top accelerating candidate terms from the open-vocabulary discovery engine.
+
+    Returns raw terms ranked by total mention count — before they breach the
+    threshold to be promoted as a registered theme. Useful for monitoring what
+    the discovery engine is tracking.
+    """
+    rows = store.get_term_candidates(
+        min_sources=min_sources,
+        min_total=min_total,
+        since_days=30,
+    )
+    return {"candidates": rows[:limit], "total": len(rows)}
+
+
+@app.post("/api/discovery/run")
+def run_discovery(background_tasks: BackgroundTasks):
+    """Manual trigger for the discovery cycle."""
+    from backend.engine.discovery import run_discovery_cycle
+
+    def _run():
+        n = run_discovery_cycle()
+        log.info("manual discovery: %d new themes", n)
+
+    background_tasks.add_task(_run)
+    return {"status": "discovery cycle triggered"}
