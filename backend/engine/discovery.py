@@ -23,6 +23,7 @@ import numpy as np
 
 from backend.db import store
 from backend.engine.term_extractor import extract_phrases
+from backend.ingestion.hn import hn_backfill_term_counts
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,27 @@ _PROCESS_HOURS   = 48    # re-process events from this many hours back
 def _slugify(text: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     return s[:64]
+
+
+def _hn_backfill_qualifies(
+    term: str,
+    lookback: int,
+    recent_days: int,
+    z_threshold: float = 3.0,
+    min_breach_days: int = 3,
+) -> bool:
+    """Return True if term's HN backfill history shows a strong sustained breach."""
+    history = store.get_term_history(term, "hn", since_days=lookback)
+    if len(history) < recent_days + 3:
+        return False
+    counts = np.array([h["count"] for h in history], dtype=float)
+    split = max(len(counts) - recent_days, 3)
+    baseline = counts[:split]
+    recent = counts[split:]
+    mu = baseline.mean()
+    sigma = max(baseline.std(), 0.5)
+    breach = sum(1 for c in recent if (c - mu) / sigma >= z_threshold)
+    return breach >= min_breach_days
 
 
 def run_discovery_cycle() -> int:
@@ -74,8 +96,29 @@ def run_discovery_cycle() -> int:
     log.info("discovery: stored %d term×source×day entries from %d events",
              len(counts), len(events))
 
-    # ── 4. candidate terms: seen in ≥ MIN_SOURCES, ≥ MIN_TOTAL mentions ───
+    # ── 3b. backfill HN history for brand-new terms ───────────────────────
+    # Any term seen for the first time today has no baseline. Immediately
+    # fetch its last 90 days from HN Algolia so the Z-score can be computed
+    # right now instead of waiting days for organic accumulation.
     lookback = _BASELINE_DAYS + _RECENT_DAYS
+    new_terms = {
+        term for (term, src, day) in counts
+        if not store.get_term_history(term, "hn", since_days=lookback + 1)
+    }
+    for term in new_terms:
+        try:
+            daily = hn_backfill_term_counts(term, days=lookback)
+            if daily:
+                backfill_entries = [
+                    (term, "hn", day, cnt) for day, cnt in daily.items()
+                ]
+                store.replace_term_counts(backfill_entries)
+                log.debug("discovery: backfilled %d days of HN history for %r",
+                          len(daily), term)
+        except Exception as exc:
+            log.warning("discovery: HN backfill failed for %r: %s", term, exc)
+
+    # ── 4. candidate terms: seen in ≥ MIN_SOURCES, ≥ MIN_TOTAL mentions ───
     candidates = store.get_term_candidates(
         min_sources=_MIN_SOURCES,
         min_total=_MIN_TOTAL,
@@ -125,7 +168,16 @@ def run_discovery_cycle() -> int:
                         breach_days.add(day)
 
         # ── 7. promote if multi-source + sustained ────────────────────────
-        if len(breach_sources) >= _MIN_SOURCES and len(breach_days) >= _MIN_DAYS:
+        # Relax source requirement for HN-backfilled terms: if HN alone shows
+        # a strong, sustained breach (Z≥3 on ≥3 days) treat it as sufficient —
+        # EDGAR/GDELT will be queried next cycle now that the term is promoted.
+        hn_strong = (
+            "hn" in breach_sources
+            and len(breach_days) >= 3
+            and _hn_backfill_qualifies(term, lookback, _RECENT_DAYS)
+        )
+        qualifies = (len(breach_sources) >= _MIN_SOURCES and len(breach_days) >= _MIN_DAYS) or hn_strong
+        if qualifies:
             log.info(
                 "discovery: promoting %r  sources=%s  breach_days=%d",
                 term, breach_sources, len(breach_days),

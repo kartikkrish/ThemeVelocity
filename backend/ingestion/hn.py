@@ -6,7 +6,8 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -124,3 +125,51 @@ class HNFirehoseFetcher(Fetcher):
                 event_id=f"hn_{obj_id}",
             ))
         return results
+
+
+def hn_backfill_term_counts(term: str, days: int = 90) -> dict[str, int]:
+    """Fetch daily mention counts for `term` over the last `days` days from HN.
+
+    Uses the Algolia search_by_date API with pagination to collect all hits,
+    then groups by calendar day. Returns {YYYY-MM-DD: count}.
+
+    Called by the discovery engine when a term is first seen so it can
+    immediately compute a Z-score against a real 90-day baseline instead of
+    waiting days for counts to accumulate organically.
+    """
+    session = _session_with_retry()
+    now = datetime.now(timezone.utc)
+    since_ts = int((now - timedelta(days=days)).timestamp())
+
+    daily: dict[str, int] = defaultdict(int)
+    page = 0
+    while True:
+        try:
+            resp = session.get(HN_SEARCH, params={
+                "query": term,
+                "tags": "story",
+                "numericFilters": f"created_at_i>{since_ts}",
+                "hitsPerPage": 1000,
+                "page": page,
+            }, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as exc:
+            log.warning("HN backfill failed term=%r page=%d: %s", term, page, exc)
+            break
+
+        hits = data.get("hits", [])
+        for hit in hits:
+            ts_i = hit.get("created_at_i", 0)
+            if ts_i:
+                day = datetime.fromtimestamp(ts_i, tz=timezone.utc).strftime("%Y-%m-%d")
+                daily[day] += 1
+
+        nb_pages = data.get("nbPages", 1)
+        page += 1
+        if page >= nb_pages or page >= 10:   # cap at 10 pages to avoid runaway
+            break
+        time.sleep(0.2)
+
+    log.info("HN backfill term=%r days=%d: %d days with mentions", term, days, len(daily))
+    return dict(daily)
