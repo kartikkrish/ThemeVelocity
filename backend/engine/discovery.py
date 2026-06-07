@@ -130,11 +130,18 @@ def run_discovery_cycle() -> int:
                 "discovery: promoting %r  sources=%s  breach_days=%d",
                 term, breach_sources, len(breach_days),
             )
+            # Store the term plus any known co-occurring sub-phrases as keywords
+            # so EDGAR/GDELT get useful query strings on the next ingestion cycle.
+            kw_set: list[str] = [term]
+            words = term.split()
+            if len(words) >= 2:
+                # Include each individual word as a fallback query term
+                kw_set.extend(w for w in words if len(w) > 3)
             store.upsert_theme({
                 "theme_id":   slug,
                 "name":       term.title(),
-                "primitive":  "",
-                "keywords":   json.dumps([term]),
+                "primitive":  f"Auto-discovered via HN velocity — breach on {', '.join(breach_sources)}",
+                "keywords":   json.dumps(list(dict.fromkeys(kw_set))),
                 "status":     "candidate",
                 "created_at": now.isoformat(),
             })

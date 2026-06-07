@@ -84,6 +84,9 @@ def run_ingestion(since: datetime, sources: list[str] | None = None) -> dict[str
         new_themes = run_discovery_cycle()
         if new_themes:
             log.info("discovery: %d new candidate theme(s) registered", new_themes)
+            # Reload tagger so newly promoted candidates flow into EDGAR/GDELT
+            # query terms on the very next ingestion cycle.
+            tagger.reload()
         totals["_discovered"] = new_themes
     except Exception as exc:
         log.error("discovery cycle error: %s", exc)
